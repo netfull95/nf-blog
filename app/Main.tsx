@@ -20,7 +20,7 @@ export default function Home({ posts }) {
         </div>
         <ul className="divide-y divide-gray-200 dark:divide-gray-700">
           {!posts.length && 'No posts found.'}
-          {posts.slice(0, MAX_DISPLAY).map((post) => {
+          {posts.filter(p => !p.draft).slice(0, MAX_DISPLAY).map((post) => {
             const { slug, date, title, summary, tags } = post
             return (
               <li key={slug} className="py-12">

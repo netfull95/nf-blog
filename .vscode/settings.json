@@ -2,3 +2,9 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true
 }
+
+"[mdx]": {
+  "editor.wordWrap": "on",
+  "editor.quickSuggestions": true,
+  "editor.formatOnSave": true
+}
