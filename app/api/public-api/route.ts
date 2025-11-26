@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     console.log(`Fetching URL: ${origin_url}`);
 
     const shopee_url = "https://affiliate.shopee.vn/api/v3/gql"
-
+    const cookie = process.env.PRIVATE_COOKIES || ''
 
     // Gọi API từ URL được cung cấp
     const response = await fetch(shopee_url, {
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         'af-ac-enc-dat': '937d8026c2036b48',
         'content-type': 'application/json; charset=UTF-8',
         'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-        'Cookie': PRIVATE_COOKIES
+        'Cookie': cookie
       },
       body: JSON.stringify({
         query: `
