@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
       if (!shortLink) {
         return NextResponse.json(
           {
-            error: 'No short link found or token expired',',
+            error: 'No short link found or token expired',
             message: 'Could not generate short link from API'
           },
           { status: 400 }
