@@ -1,6 +1,41 @@
 // app/api/public-api/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
+async function getShortLink(origin_url: string) {
+  const shopee_url = "https://affiliate.shopee.vn/api/v3/gql"
+  const cookie = process.env.PRIVATE_COOKIES || ''
+
+  const response = await fetch(shopee_url, {
+    method: 'POST',
+    headers: {
+      'af-ac-enc-dat': '937d8026c2036b48',
+      'content-type': 'application/json; charset=UTF-8',
+      'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+      'Cookie': cookie
+    },
+    body: JSON.stringify({
+      query: `
+          query batchGetCustomLink($linkParams: [CustomLinkParam!], $sourceCaller: SourceCaller){
+          batchCustomLink(linkParams: $linkParams, sourceCaller: $sourceCaller){
+              shortLink
+              longLink
+              failCode
+          }
+          }
+      `,
+      variables: {
+          linkParams: [{
+          originalLink: origin_url,
+          advancedLinkParams: {}
+          }],
+          sourceCaller: "CUSTOM_LINK_CALLER"
+      }
+      })
+  });
+
+  return response;
+}
+
 // Export named function GET (không dùng export default)
 export async function GET(request: NextRequest) {
   try {
@@ -46,39 +81,8 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetching URL: ${origin_url}`);
 
-    const shopee_url = "https://affiliate.shopee.vn/api/v3/gql"
-    const cookie = process.env.PRIVATE_COOKIES || ''
-
     // Gọi API từ URL được cung cấp
-    const response = await fetch(shopee_url, {
-      method: 'POST',
-      headers: {
-        'af-ac-enc-dat': '937d8026c2036b48',
-        'content-type': 'application/json; charset=UTF-8',
-        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-        'Cookie': cookie
-      },
-      body: JSON.stringify({
-        query: `
-            query batchGetCustomLink($linkParams: [CustomLinkParam!], $sourceCaller: SourceCaller){
-            batchCustomLink(linkParams: $linkParams, sourceCaller: $sourceCaller){
-                shortLink
-                longLink
-                failCode
-            }
-            }
-        `,
-        variables: {
-            linkParams: [{
-            originalLink: origin_url,
-            advancedLinkParams: {}
-            }],
-            sourceCaller: "CUSTOM_LINK_CALLER"
-        }
-        })
-    });
-
-    console.log('vao day roi ma')
+    const response = await getShortLink(origin_url)
 
     // Kiểm tra response status
     if (!response.ok) {
@@ -97,7 +101,19 @@ export async function GET(request: NextRequest) {
 
     // Xử lý response dựa trên content type
     if (contentType && contentType.includes('application/json')) {
-      const {data: {batchCustomLink: [{shortLink: shortLink}]}} = await response.json();
+      const responseData = await response.json();
+      const shortLink = responseData?.data?.batchCustomLink?.[0]?.shortLink;
+      
+      if (!shortLink) {
+        return NextResponse.json(
+          {
+            error: 'No short link found or token expired',
+            message: 'Could not generate short link from API'
+          },
+          { status: 400 }
+        );
+      }
+
       return NextResponse.json({
         shortLink
       });
@@ -163,6 +179,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { url, method = 'POST', headers = {}, data } = body;
+    const origin_url = url
 
     if (!url) {
       return NextResponse.json(
@@ -171,29 +188,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(url, {
-      method: method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers
-      },
-      body: data ? JSON.stringify(data) : undefined,
-      signal: AbortSignal.timeout(10000)
-    });
+    const response = await getShortLink(origin_url)
+
+    // Kiểm tra response status
+    if (!response.ok) {
+      return NextResponse.json(
+        {
+          error: 'API Error',
+          message: `Target API returned status ${response.status}`,
+          statusText: response.statusText
+        },
+        { status: response.status }
+      );
+    }
 
     const contentType = response.headers.get('content-type');
-    
-    if (contentType?.includes('application/json')) {
-      const data = await response.json();
+
+    // Xử lý response dựa trên content type
+    if (contentType && contentType.includes('application/json')) {
+      const responseData = await response.json();
+      const shortLink = responseData?.data?.batchCustomLink?.[0]?.shortLink;
+      
+      if (!shortLink) {
+        return NextResponse.json(
+          {
+            error: 'No short link found or token expired',',
+            message: 'Could not generate short link from API'
+          },
+          { status: 400 }
+        );
+      }
+
       return NextResponse.json({
-        success: true,
-        data: data
-      });
-    } else {
-      const text = await response.text();
-      return NextResponse.json({
-        success: true,
-        data: text
+        shortLink
       });
     }
 
