@@ -2,6 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { envConfig } from 'config/env.config';
 
+console.log('🔍 Route.ts loaded at:', new Date().toISOString());
+console.log('📦 PRIVATE_COOKIES exists:', !!process.env.PRIVATE_COOKIE);
+console.log('📦 PRIVATE_COOKIES length:', process.env.PRIVATE_COOKIE?.length);
+
 async function getShortLink(origin_url: string) {
   const shopee_url = "https://affiliate.shopee.vn/api/v3/gql"
   const cookie = envConfig.shopee.cookies || ''

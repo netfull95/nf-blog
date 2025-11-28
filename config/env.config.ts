@@ -1,7 +1,7 @@
 // config/env.config.ts
 export const envConfig = {
   shopee: {
-    cookies: process.env.PRIVATE_COOKIES || '',
+    cookies: process.env.PRIVATE_COOKIE || '',
     afAcEncDat: process.env.AF_AC_ENC_DAT || '937d8026c2036b48',
   },
   api: {
@@ -11,7 +11,7 @@ export const envConfig = {
 
 // Type-safe config với validation
 export function validateEnvConfig() {
-  if (!process.env.PRIVATE_COOKIES) {
+  if (!process.env.PRIVATE_COOKIE) {
     console.warn('Warning: PRIVATE_COOKIES is not set');
   }
   
