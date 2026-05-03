@@ -60,24 +60,52 @@ const computedFields: ComputedFields = {
 }
 
 /**
- * Count the occurrences of all tags across blog posts and write to json file
+ * Count the occurrences of all tags across blog posts, split by locale,
+ * writing one JSON file per locale (e.g. tag-data.vi.json, tag-data.en.json).
  */
 async function createTagCount(allBlogs) {
-  const tagCount: Record<string, number> = {}
+  const byLocale: Record<string, Record<string, number>> = {}
   allBlogs.forEach((file) => {
-    if (file.tags && (!isProduction || file.draft !== true)) {
-      file.tags.forEach((tag) => {
-        const formattedTag = slug(tag)
-        if (formattedTag in tagCount) {
-          tagCount[formattedTag] += 1
-        } else {
-          tagCount[formattedTag] = 1
-        }
-      })
-    }
+    if (!file.tags) return
+    if (isProduction && file.draft === true) return
+    const locale = file.language || 'vi'
+    const tagCount = (byLocale[locale] = byLocale[locale] || {})
+    file.tags.forEach((tag) => {
+      const formattedTag = slug(tag)
+      tagCount[formattedTag] = (tagCount[formattedTag] || 0) + 1
+    })
   })
-  const formatted = await prettier.format(JSON.stringify(tagCount, null, 2), { parser: 'json' })
-  writeFileSync('./app/tag-data.json', formatted)
+  for (const [locale, tagCount] of Object.entries(byLocale)) {
+    const formatted = await prettier.format(JSON.stringify(tagCount, null, 2), { parser: 'json' })
+    writeFileSync(`./app/tag-data.${locale}.json`, formatted)
+  }
+  // Ensure both locale files exist even if empty, so imports don't break.
+  for (const locale of ['vi', 'en']) {
+    if (!byLocale[locale]) {
+      writeFileSync(`./app/tag-data.${locale}.json`, '{}\n')
+    }
+  }
+}
+
+/**
+ * Build a map of translationKey -> { [locale]: slug } and slug -> translationKey,
+ * so the LocaleSwitcher can jump from a post in one locale to its translation.
+ */
+async function createTranslationMap(allBlogs) {
+  const byKey: Record<string, Record<string, string>> = {}
+  const bySlug: Record<string, string> = {}
+  allBlogs.forEach((file) => {
+    if (!file.translationKey) return
+    if (isProduction && file.draft === true) return
+    const locale = file.language || 'vi'
+    byKey[file.translationKey] = byKey[file.translationKey] || {}
+    byKey[file.translationKey][locale] = file.slug
+    bySlug[file.slug] = file.translationKey
+  })
+  const formatted = await prettier.format(JSON.stringify({ byKey, bySlug }, null, 2), {
+    parser: 'json',
+  })
+  writeFileSync('./app/post-translations.json', formatted)
 }
 
 function createSearchIndex(allBlogs) {
@@ -109,21 +137,28 @@ export const Blog = defineDocumentType(() => ({
     layout: { type: 'string' },
     bibliography: { type: 'string' },
     canonicalUrl: { type: 'string' },
+    language: { type: 'string', default: 'vi' },
+    translationKey: { type: 'string' },
   },
   computedFields: {
     ...computedFields,
     structuredData: {
       type: 'json',
-      resolve: (doc) => ({
-        '@context': 'https://schema.org',
-        '@type': 'BlogPosting',
-        headline: doc.title,
-        datePublished: doc.date,
-        dateModified: doc.lastmod || doc.date,
-        description: doc.summary,
-        image: doc.images ? doc.images[0] : siteMetadata.socialBanner,
-        url: `${siteMetadata.siteUrl}/${doc._raw.flattenedPath}`,
-      }),
+      resolve: (doc) => {
+        const lang = doc.language || 'vi'
+        const localePrefix = lang === 'vi' ? '' : `/${lang}`
+        return {
+          '@context': 'https://schema.org',
+          '@type': 'BlogPosting',
+          headline: doc.title,
+          datePublished: doc.date,
+          dateModified: doc.lastmod || doc.date,
+          description: doc.summary,
+          image: doc.images ? doc.images[0] : siteMetadata.socialBanner,
+          inLanguage: lang === 'vi' ? 'vi-VN' : 'en-US',
+          url: `${siteMetadata.siteUrl}${localePrefix}/${doc._raw.flattenedPath}`,
+        }
+      },
     },
   },
 }))
@@ -182,6 +217,7 @@ export default makeSource({
   onSuccess: async (importData) => {
     const { allBlogs } = await importData()
     createTagCount(allBlogs)
+    createTranslationMap(allBlogs)
     createSearchIndex(allBlogs)
   },
 })

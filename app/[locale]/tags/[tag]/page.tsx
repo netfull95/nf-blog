@@ -1,0 +1,80 @@
+import { slug } from 'github-slugger'
+import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer'
+import siteMetadata from '@/data/siteMetadata'
+import ListLayout from '@/layouts/ListLayoutWithTags'
+import { allBlogs } from 'contentlayer/generated'
+import tagDataVi from 'app/tag-data.vi.json'
+import tagDataEn from 'app/tag-data.en.json'
+import { genPageMetadata } from 'app/seo'
+import { Metadata } from 'next'
+import { setRequestLocale } from 'next-intl/server'
+import { routing } from '@/i18n/routing'
+
+const POSTS_PER_PAGE = 5
+
+const tagDataByLocale: Record<string, Record<string, number>> = {
+  vi: tagDataVi as Record<string, number>,
+  en: tagDataEn as Record<string, number>,
+}
+
+export async function generateMetadata(props: {
+  params: Promise<{ tag: string }>
+}): Promise<Metadata> {
+  const params = await props.params
+  const tag = decodeURI(params.tag)
+  return genPageMetadata({
+    title: tag,
+    description: `${siteMetadata.title} ${tag} tagged content`,
+    alternates: {
+      canonical: './',
+      types: {
+        'application/rss+xml': `${siteMetadata.siteUrl}/tags/${tag}/feed.xml`,
+      },
+    },
+  })
+}
+
+export const generateStaticParams = async () => {
+  const params: { locale: string; tag: string }[] = []
+  for (const locale of routing.locales) {
+    const tagCounts = tagDataByLocale[locale] || {}
+    for (const tag of Object.keys(tagCounts)) {
+      params.push({ locale, tag: encodeURI(tag) })
+    }
+  }
+  return params
+}
+
+export default async function TagPage(props: {
+  params: Promise<{ locale: string; tag: string }>
+}) {
+  const params = await props.params
+  setRequestLocale(params.locale)
+  const tag = decodeURI(params.tag)
+  const title = tag[0].toUpperCase() + tag.split(' ').join('-').slice(1)
+  const filteredPosts = allCoreContent(
+    sortPosts(
+      allBlogs.filter(
+        (post) =>
+          (post.language ?? 'vi') === params.locale &&
+          post.tags &&
+          post.tags.map((t) => slug(t)).includes(tag)
+      )
+    )
+  )
+  const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE)
+  const initialDisplayPosts = filteredPosts.slice(0, POSTS_PER_PAGE)
+  const pagination = {
+    currentPage: 1,
+    totalPages: totalPages,
+  }
+
+  return (
+    <ListLayout
+      posts={filteredPosts}
+      initialDisplayPosts={initialDisplayPosts}
+      pagination={pagination}
+      title={title}
+    />
+  )
+}

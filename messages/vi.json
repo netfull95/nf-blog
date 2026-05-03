@@ -1,0 +1,80 @@
+{
+  "Nav": {
+    "home": "Trang chủ",
+    "blog": "Bài viết",
+    "tags": "Chủ đề",
+    "tools": "Công cụ",
+    "projects": "Dự án",
+    "about": "Giới thiệu"
+  },
+  "Tools": {
+    "title": "Công cụ",
+    "description": "Bộ công cụ nhỏ tôi tự xây để dùng hằng ngày.",
+    "metaTitle": "Công cụ",
+    "metaDescription": "Các công cụ web miễn phí: QR generator và sắp tới sẽ có thêm.",
+    "openTool": "Mở công cụ",
+    "qr": {
+      "title": "QR Generator",
+      "shortDescription": "Tạo mã QR từ link hoặc văn bản, tải về PNG/JPEG hoặc copy vào clipboard.",
+      "metaTitle": "QR Generator",
+      "metaDescription": "Tạo mã QR nhanh từ URL hoặc văn bản, tuỳ chỉnh kích thước và mức sửa lỗi, tải về PNG/JPEG hoặc copy.",
+      "nameLabel": "Tên hiển thị (không bắt buộc)",
+      "namePlaceholder": "Ví dụ: Wifi nhà",
+      "contentLabel": "Nội dung *",
+      "contentPlaceholder": "Dán link hoặc văn bản cần tạo QR...",
+      "sizeLabel": "Kích thước",
+      "generate": "Tạo QR",
+      "copy": "Copy ảnh",
+      "downloadPng": "Tải PNG",
+      "downloadJpeg": "Tải JPEG",
+      "shortcutHint": "Mẹo: nhấn Ctrl+Enter để tạo QR ngay.",
+      "errorEmpty": "Nội dung không được để trống.",
+      "errorTooLong": "Nội dung quá dài (tối đa 2000 ký tự).",
+      "errorGenerate": "Tạo QR thất bại. Thử lại?",
+      "copySuccess": "Đã copy ảnh vào clipboard.",
+      "copyFail": "Không copy được. Trình duyệt có thể không hỗ trợ.",
+      "charCount": "{count}/{max}"
+    }
+  },
+  "Common": {
+    "readMore": "Đọc tiếp",
+    "allPosts": "Tất cả bài viết",
+    "previous": "Trước",
+    "next": "Sau",
+    "tags": "Chủ đề",
+    "search": "Tìm kiếm",
+    "toggleMenu": "Mở/đóng menu",
+    "toggleTheme": "Đổi giao diện"
+  },
+  "Home": {
+    "latest": "Mới nhất",
+    "noPosts": "Chưa có bài viết nào."
+  },
+  "Blog": {
+    "title": "Bài viết",
+    "metaTitle": "Bài viết",
+    "noTagsFound": "Chưa có chủ đề nào."
+  },
+  "Tags": {
+    "title": "Chủ đề",
+    "metaTitle": "Chủ đề",
+    "metaDescription": "Những chủ đề tôi viết về"
+  },
+  "Post": {
+    "publishedOn": "Đăng ngày",
+    "tags": "Chủ đề",
+    "previousArticle": "Bài trước",
+    "nextArticle": "Bài tiếp theo",
+    "previousAria": "Bài trước: {title}",
+    "nextAria": "Bài tiếp theo: {title}",
+    "backToBlog": "← Quay lại danh sách bài viết",
+    "backToBlogAria": "Quay lại danh sách bài viết",
+    "discussOnTwitter": "Thảo luận trên Twitter",
+    "viewOnGithub": "Xem trên GitHub"
+  },
+  "Locale": {
+    "switchTo": "Chuyển ngôn ngữ",
+    "vi": "Tiếng Việt",
+    "en": "English"
+  }
+}

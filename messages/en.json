@@ -1,0 +1,80 @@
+{
+  "Nav": {
+    "home": "Home",
+    "blog": "Blog",
+    "tags": "Tags",
+    "tools": "Tools",
+    "projects": "Projects",
+    "about": "About"
+  },
+  "Tools": {
+    "title": "Tools",
+    "description": "Small utilities I built for everyday use.",
+    "metaTitle": "Tools",
+    "metaDescription": "Free web tools: QR generator and more coming soon.",
+    "openTool": "Open tool",
+    "qr": {
+      "title": "QR Generator",
+      "shortDescription": "Generate QR codes from URLs or text, download as PNG/JPEG or copy to clipboard.",
+      "metaTitle": "QR Generator",
+      "metaDescription": "Quickly generate QR codes from a URL or text, customize size and error correction, download as PNG/JPEG or copy.",
+      "nameLabel": "Display name (optional)",
+      "namePlaceholder": "e.g. Home Wifi",
+      "contentLabel": "Content *",
+      "contentPlaceholder": "Paste a link or any text to encode...",
+      "sizeLabel": "Size",
+      "generate": "Generate QR",
+      "copy": "Copy image",
+      "downloadPng": "Download PNG",
+      "downloadJpeg": "Download JPEG",
+      "shortcutHint": "Tip: press Ctrl+Enter to generate.",
+      "errorEmpty": "Content cannot be empty.",
+      "errorTooLong": "Content too long (max 2000 characters).",
+      "errorGenerate": "Failed to generate QR. Try again?",
+      "copySuccess": "Image copied to clipboard.",
+      "copyFail": "Copy failed. Your browser may not support it.",
+      "charCount": "{count}/{max}"
+    }
+  },
+  "Common": {
+    "readMore": "Read more",
+    "allPosts": "All Posts",
+    "previous": "Previous",
+    "next": "Next",
+    "tags": "Tags",
+    "search": "Search",
+    "toggleMenu": "Toggle menu",
+    "toggleTheme": "Toggle theme"
+  },
+  "Home": {
+    "latest": "Latest",
+    "noPosts": "No posts found."
+  },
+  "Blog": {
+    "title": "All Posts",
+    "metaTitle": "Blog",
+    "noTagsFound": "No tags found."
+  },
+  "Tags": {
+    "title": "Tags",
+    "metaTitle": "Tags",
+    "metaDescription": "Things I blog about"
+  },
+  "Post": {
+    "publishedOn": "Published on",
+    "tags": "Tags",
+    "previousArticle": "Previous Article",
+    "nextArticle": "Next Article",
+    "previousAria": "Previous post: {title}",
+    "nextAria": "Next post: {title}",
+    "backToBlog": "← Back to the blog",
+    "backToBlogAria": "Back to the blog",
+    "discussOnTwitter": "Discuss on Twitter",
+    "viewOnGithub": "View on GitHub"
+  },
+  "Locale": {
+    "switchTo": "Switch language",
+    "vi": "Tiếng Việt",
+    "en": "English"
+  }
+}

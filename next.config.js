@@ -1,4 +1,7 @@
 const { withContentlayer } = require('next-contentlayer2')
+const createNextIntlPlugin = require('next-intl/plugin')
+
+const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
@@ -62,7 +65,7 @@ const unoptimized = process.env.UNOPTIMIZED ? true : undefined
  * @type {import('next/dist/next-server/server/config').NextConfig}
  **/
 module.exports = () => {
-  const plugins = [withContentlayer, withBundleAnalyzer]
+  const plugins = [withNextIntl, withContentlayer, withBundleAnalyzer]
   return plugins.reduce((acc, next) => next(acc), {
     output,
     basePath,
@@ -87,6 +90,13 @@ module.exports = () => {
           source: '/(.*)',
           headers: securityHeaders,
         },
+      ]
+    },
+    async redirects() {
+      return [
+        // Short alias for the QR generator tool. Preserves locale when prefixed.
+        { source: '/genqr', destination: '/tools/qr-generator', permanent: false },
+        { source: '/en/genqr', destination: '/en/tools/qr-generator', permanent: false },
       ]
     },
     webpack: (config, options) => {

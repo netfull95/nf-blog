@@ -1,0 +1,12 @@
+{
+  "byKey": {
+    "intro-pancake": {
+      "vi": "gioi-thieu-pancake",
+      "en": "introducing-pancake"
+    }
+  },
+  "bySlug": {
+    "gioi-thieu-pancake": "intro-pancake",
+    "introducing-pancake": "intro-pancake"
+  }
+}
