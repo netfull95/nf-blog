@@ -94,9 +94,11 @@ module.exports = () => {
     },
     async redirects() {
       return [
-        // Short alias for the QR generator tool. Preserves locale when prefixed.
+        // Short aliases for tools.
         { source: '/genqr', destination: '/tools/qr-generator', permanent: false },
         { source: '/en/genqr', destination: '/en/tools/qr-generator', permanent: false },
+        { source: '/fbinfo', destination: '/tools/fb-info', permanent: false },
+        { source: '/en/fbinfo', destination: '/en/tools/fb-info', permanent: false },
       ]
     },
     webpack: (config, options) => {
