@@ -69,6 +69,8 @@
       "subIdLabel": "Sub IDs",
       "subIdPlaceholder": "vd: blog-spring2026-fb-organic-promo",
       "subIdHint": "Tối đa 5 giá trị, phân tách bằng dấu '-'. Bỏ qua nếu không cần track.",
+      "expandedFromLabel": "Đã tự động mở rộng từ shortlink",
+      "errorExpandFailed": "Không thể mở rộng shortlink. Thử dùng URL sản phẩm đầy đủ thay vì link rút gọn.",
       "errorTitle": "Tạo link thất bại",
       "errorEmpty": "Vui lòng nhập link Shopee.",
       "errorNotShopee": "URL phải là link shopee.vn / shp.ee.",

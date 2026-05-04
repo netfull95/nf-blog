@@ -69,6 +69,8 @@
       "subIdLabel": "Sub IDs",
       "subIdPlaceholder": "e.g. blog-spring2026-fb-organic-promo",
       "subIdHint": "Up to 5 values separated by '-'. Leave empty if you don't need tracking.",
+      "expandedFromLabel": "Auto-expanded from shortlink",
+      "errorExpandFailed": "Could not expand the shortlink. Try the full product URL instead.",
       "errorTitle": "Failed to generate link",
       "errorEmpty": "Please enter a Shopee URL.",
       "errorNotShopee": "URL must be a shopee.vn / shp.ee link.",
