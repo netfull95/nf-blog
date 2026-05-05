@@ -9,7 +9,7 @@ const siteMetadata = {
   siteUrl: 'https://netfull.top',
   siteRepo: 'https://github.com/netfull95/nf-blog',
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
-  socialBanner: `${process.env.BASE_PATH || ''}/static/images/nf-blog-banner.png`,
+  socialBanner: `${process.env.BASE_PATH || ''}/static/images/nf-blog-banner-260506.jpg`,
   // mastodon: 'https://mastodon.social/@mastodonuser',
   // email: 'address@yoursite.com',
   github: 'https://github.com/netfull95',
