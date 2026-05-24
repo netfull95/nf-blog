@@ -1,5 +1,13 @@
 {
-  "pancake": 1,
+  "pancake": 2,
   "sales-management": 1,
-  "social-commerce": 1
+  "social-commerce": 1,
+  "webhook": 1,
+  "api": 1,
+  "page-access-token": 1,
+  "automation": 1,
+  "integration": 1,
+  "chatbot": 1,
+  "facebook-messenger": 1,
+  "pancake-developer": 1
 }

@@ -3,10 +3,16 @@
     "intro-pancake": {
       "vi": "gioi-thieu-pancake",
       "en": "introducing-pancake"
+    },
+    "pancake-webhook-api": {
+      "en": "pancake-webhook-and-api-send-message",
+      "vi": "pancake-webhook-va-api-gui-tin-nhan"
     }
   },
   "bySlug": {
     "gioi-thieu-pancake": "intro-pancake",
-    "introducing-pancake": "intro-pancake"
+    "introducing-pancake": "intro-pancake",
+    "pancake-webhook-and-api-send-message": "pancake-webhook-api",
+    "pancake-webhook-va-api-gui-tin-nhan": "pancake-webhook-api"
   }
 }

@@ -1,0 +1,440 @@
+---
+title: "Hướng dẫn kết nối Webhook & API gửi tin nhắn trên Pancake"
+date: "2026-05-11"
+lastmod: "2026-05-25"
+language: "vi"
+translationKey: "pancake-webhook-api"
+summary: "Hướng dẫn từng bước cấu hình Webhook để nhận tin nhắn realtime từ Pancake và gọi API gửi reply tự động cho khách hàng, kèm Page Access Token, endpoint chuẩn và ví dụ code Node.js + Python."
+tags: ["Pancake", "Webhook", "API", "Page Access Token", "Tự động hoá", "Tích hợp", "Chatbot", "Facebook Messenger", "Pancake developer"]
+---
+
+# Hướng dẫn kết nối Webhook & API gửi tin nhắn trên Pancake
+
+> **TL;DR:** [Pancake](/blog/gioi-thieu-pancake) là nền tảng quản lý chat đa kênh phổ biến tại Việt Nam. Để tích hợp hệ thống bên ngoài, Pancake cung cấp 2 cơ chế: **Webhook** (Pancake đẩy event tới server bạn) và **API** (server bạn gọi vào Pancake). Toàn bộ API page-level đặt tại `https://pages.fm/api/public_api/v1/...` và xác thực bằng **Page Access Token** lấy từ **Cài đặt → Công cụ** trong dashboard của page.
+
+Pancake không chỉ là công cụ quản lý chat và bán hàng — mà còn là một **platform mở**, cho phép bạn kết nối hệ thống nội bộ với Pancake thông qua API và Webhook. Nếu chưa quen với Pancake, bạn có thể đọc [bài giới thiệu tổng quan](/blog/gioi-thieu-pancake) trước.
+
+Hai cơ chế hoạt động khác nhau nhưng bổ trợ cho nhau:
+
+- **Webhook**: Pancake chủ động **đẩy dữ liệu** đến hệ thống của bạn mỗi khi có sự kiện xảy ra — ví dụ khách nhắn tin mới, đơn hàng được tạo, trạng thái đơn thay đổi...
+- **API**: Hệ thống của bạn chủ động **gọi vào Pancake** để thực hiện hành động — gửi tin nhắn trả lời khách, tạo đơn hàng, đọc thông tin hội thoại...
+
+Bài viết này hướng dẫn bạn từ A đến Z: **cấu hình webhook để nhận tin nhắn** và **gọi API để gửi reply cho khách**.
+
+Tài liệu API đầy đủ: [developer.pancake.biz](https://developer.pancake.biz/)
+
+---
+
+## 1. Chuẩn bị: Lấy Page Access Token
+
+Trước khi gọi API gửi tin nhắn, bạn cần lấy **Page Access Token** — đây là "chìa khóa" để hệ thống bên ngoài xác thực với Pancake trên danh nghĩa một page cụ thể.
+
+### Pancake có 2 loại token — bạn cần loại nào?
+
+| Loại | Tên trường | Dùng cho | Hết hạn |
+|---|---|---|---|
+| **User Access Token** | `access_token` | API cấp tài khoản (liệt kê pages, sinh page_access_token) | ~90 ngày hoặc khi logout |
+| **Page Access Token** | `page_access_token` | API cấp page (tin nhắn, hội thoại, khách hàng, thống kê...) | **KHÔNG hết hạn** trừ khi xoá/regenerate |
+
+> [!TIP]
+> **Đa số kịch bản tích hợp** (gửi reply, đọc tin nhắn, quản lý hội thoại, tag, khách hàng...) chỉ cần **Page Access Token** là đủ. User Access Token chỉ cần khi bạn muốn programmatically liệt kê pages hoặc tự động sinh token cho nhiều page.
+
+### Cách A — Lấy Page Access Token từ UI (đơn giản, recommend khi chỉ có 1 page)
+
+1. Đăng nhập [Pancake](https://pages.fm), mở page cần kết nối
+2. Vào **Cài đặt → Công cụ** (Settings → Tools)
+3. Copy giá trị **Page Access Token** trong panel
+
+{/* [Screenshot: Giao diện copy Page Access Token tại Settings → Tools] */}
+
+### Cách B — Sinh Page Access Token qua API (khi quản lý nhiều page)
+
+Đầu tiên cần **User Access Token**:
+
+1. Vào **Tài khoản → Cài đặt cá nhân** (Account → Personal Settings)
+2. Copy **API Access Token** — đây chính là User Access Token
+
+Sau đó, với vai trò admin của page, gọi:
+
+```bash
+curl -X POST \
+  "https://pages.fm/api/v1/pages/{page_id}/generate_page_access_token?access_token=YOUR_USER_ACCESS_TOKEN"
+```
+
+Response trả về `page_access_token` mới và **vô hiệu hoá token cũ** của page đó nếu có. Phù hợp khi bạn cần auto-refresh hoặc cấp token cho hệ thống quản lý nhiều page.
+
+Tham khảo: [Pancake API — Generate page_access_token](https://developer.pancake.biz/#/paths/pages-page_id--generate_page_access_token/post).
+
+### Lưu ý bảo mật
+
+Page Access Token có quyền đọc/ghi mọi dữ liệu của page (hội thoại, khách hàng, tin nhắn). Hãy:
+
+- **Treat token như password** — ai có token đều thao tác được trên page
+- **Không commit** vào git công khai, không paste vào tin nhắn/email
+- **Mỗi page có 1 token hợp lệ tại một thời điểm** — token chỉ scoped cho đúng page đó, không dùng chéo sang page khác. Khi regenerate, token cũ sẽ bị vô hiệu ngay → cần cập nhật mọi module đang dùng token đó
+- **Lưu trong env variable** trên server hoặc secret manager (Vault, AWS Secrets Manager...)
+- **Regenerate khi nghi ngờ rò rỉ** — tạo lại từ UI hoặc API, token cũ tự động vô hiệu
+
+---
+
+## 2. Cấu hình Webhook — Nhận sự kiện realtime từ Pancake
+
+### Webhook hoạt động như thế nào?
+
+Thay vì hệ thống của bạn phải liên tục hỏi Pancake *"Có tin nhắn mới không? Có đơn hàng mới không?"* (polling) — webhook cho phép Pancake **chủ động gọi đến URL của bạn** ngay khi sự kiện xảy ra.
+
+![Sơ đồ luồng dữ liệu webhook từ Pancake về server](https://content.pancake.vn/2-2605/2026/5/24/6f9a5472464a9c1f860f6c3a736f9bb326dd6215.jpg)
+
+Ưu điểm so với polling:
+- **Realtime**: nhận dữ liệu ngay lập tức, không có độ trễ
+- **Tiết kiệm tài nguyên**: không cần gọi API liên tục để kiểm tra
+- **Đơn giản**: chỉ cần một endpoint HTTP là đủ
+
+### Đăng ký Webhook URL
+
+1. Trong phần **Webhook/API** (nơi bạn vừa tạo API Key), tìm mục cấu hình Webhook. Bạn cần gửi yêu cầu enable tính năng này cho Support của Pancake để được mở tính năng. Tính năng chỉ khả dụng cho user có quyền admin
+2. Nhập **Webhook URL** — đây là endpoint trên server của bạn mà Pancake sẽ gửi dữ liệu đến, ví dụ: `https://your-server.com/webhook/pancake`
+3. Lưu cấu hình 
+
+![Giao diện cấu hình Webhook URL trên Pancake](https://statics.pancake.vn/pancake-docs/2025/6/26/SCR-20250626-jxxi.png)
+
+
+### Yêu cầu kỹ thuật cho Webhook endpoint
+
+Server nhận webhook của bạn cần đảm bảo:
+
+| Yêu cầu | Chi tiết |
+|----------|----------|
+| **HTTPS** | Endpoint phải có SSL certificate hợp lệ. Pancake không gửi webhook đến URL http:// |
+| **Phản hồi nhanh** | Trả về HTTP 200 trong vòng vài giây. Nếu xử lý phức tạp, hãy nhận request xong trả 200 ngay, rồi xử lý logic ở background |
+| **POST method** | Pancake gửi dữ liệu qua HTTP POST với body là JSON |
+| **Luôn sẵn sàng** | Server cần online 24/7 để không bỏ lỡ sự kiện |
+
+Nếu endpoint trả về lỗi (5xx) hoặc timeout, Pancake sẽ retry gửi lại. Tuy nhiên, nếu lỗi kéo dài, webhook sẽ bị tạm ngắt.
+
+### Test nhanh với webhook.site
+
+Chưa có server? Bạn có thể dùng [webhook.site](https://webhook.site) để test trước:
+
+1. Truy cập webhook.site — bạn sẽ nhận được một URL tạm thời (ví dụ `https://webhook.site/abc-123-xyz`)
+2. Dán URL này vào cấu hình Webhook trên Pancake
+3. Gửi thử một tin nhắn vào page Facebook đã kết nối Pancake
+4. Quay lại webhook.site — bạn sẽ thấy payload mà Pancake gửi đến
+
+Đây là cách nhanh nhất để xem cấu trúc dữ liệu webhook trước khi viết code.
+
+### Cấu trúc payload webhook
+
+Khi có tin nhắn mới, Pancake sẽ POST một JSON payload đến webhook URL của bạn. Dưới đây là ví dụ cấu trúc:
+
+```json
+{
+  "event_type": "new_message",
+  "page_id": "123456789",
+  "conversation_id": "conv_abc123",
+  "customer": {
+    "id": "cust_001",
+    "name": "Nguyễn Văn A",
+    "psid": "fb_user_567"
+  },
+  "message": {
+    "id": "msg_xyz",
+    "text": "Shop ơi, sản phẩm này còn hàng không?",
+    "created_time": "2026-05-20T10:30:00Z"
+  }
+}
+```
+
+> [!NOTE]
+> Cấu trúc trên là ví dụ minh họa. Cấu trúc chính xác các trường dữ liệu, vui lòng tham khảo tại [developer.pancake.biz/webhook](https://developer.pancake.biz/webhook). Hoặc đơn giản hơn — dùng webhook.site để bắt payload thực tế từ shop của bạn.
+
+Các trường quan trọng cần lưu ý:
+
+- **`page_id`**: ID của Facebook Page / kênh nhận tin nhắn — dùng khi gọi API reply. Nếu cần tra cứu `page_id` từ link Facebook, có thể dùng [tool FB Info Lookup](/tools/fb-info).
+- **`conversation_id`**: ID hội thoại — dùng để gửi tin nhắn trả lời đúng cuộc hội thoại
+- **`message.text`**: Nội dung tin nhắn khách gửi — dữ liệu chính bạn cần xử lý
+- **`customer`**: Thông tin khách hàng — tên, ID, platform ID
+
+---
+
+## 3. Gọi API — Gửi tin nhắn trả lời cho khách
+
+Sau khi nhận được tin nhắn qua webhook, bước tiếp theo là gửi reply. Pancake cung cấp API để bạn gửi tin nhắn trực tiếp vào cuộc hội thoại.
+
+### Endpoint gửi tin nhắn
+
+```
+POST https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/messages
+```
+
+| Tham số | Vị trí | Mô tả |
+|---------|--------|-------|
+| `page_id` | URL path | ID của page (lấy từ webhook payload hoặc API `GET /pages`) |
+| `conversation_id` | URL path | ID cuộc hội thoại (lấy từ webhook payload) |
+| `page_access_token` | Query param | Page Access Token đã lấy ở bước 1 |
+
+Lưu ý: page-level APIs đặt dưới path `/api/public_api/v1/` (KHÔNG phải `/api/v1/`) và dùng `page_access_token`, không phải `access_token`. Tham khảo chi tiết: [developer.pancake.biz](https://developer.pancake.biz/).
+
+### Ví dụ gọi API bằng cURL
+
+```bash
+curl -X POST \
+  "https://pages.fm/api/public_api/v1/pages/123456789/conversations/conv_abc123/messages?page_access_token=YOUR_PAGE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "reply_inbox",
+    "message": "Chào bạn! Cảm ơn bạn đã liên hệ. Sản phẩm hiện vẫn còn hàng ạ."
+  }'
+```
+
+### Response khi thành công
+
+```json
+{
+  "id": "1599241350234224_1599318880226471",
+  "success": true
+}
+```
+
+### Response khi lỗi
+
+| HTTP Status | Nguyên nhân | Cách xử lý |
+|-------------|-------------|-------------|
+| 401 | Page Access Token sai hoặc đã bị regenerate | Vào Pancake → Cài đặt → Công cụ → copy lại token mới |
+| 404 | `conversation_id` không tồn tại | Kiểm tra ID có đúng không, hội thoại có thể đã bị xoá |
+| 429 | Gửi quá nhiều request (rate limit) | Giảm tần suất gọi API, thêm delay giữa các request |
+| 500 | Lỗi server | Thử lại sau vài giây, nếu lỗi kéo dài hãy liên hệ hỗ trợ Pancake |
+
+### Các tham số mở rộng
+
+Ngoài gửi tin nhắn (**reply_inbox**) text đơn giản, API còn hỗ trợ:
+
+- **Reply comment**: Dùng tham số `parent_id` (ID comment cần reply) kết hợp `action: "reply_comment"` để gửi reply vào comment thay vì inbox
+- **Các định dạng khác**: Tham khảo tài liệu đầy đủ tại [developer.pancake.biz](https://developer.pancake.biz/) để xem các tham số hỗ trợ gửi hình ảnh, nút bấm, và template
+
+---
+
+## 4. Ví dụ thực tế: Luồng hoàn chỉnh từ nhận tin nhắn đến gửi reply
+
+Dưới đây là một ví dụ đơn giản bằng Node.js — server nhận webhook từ Pancake và tự động gửi tin nhắn xác nhận cho khách:
+
+```javascript
+const express = require("express");
+const app = express();
+app.use(express.json());
+
+// Page Access Token — lấy từ Pancake → Cài đặt → Công cụ
+// (mỗi page 1 token riêng, không hết hạn)
+const PANCAKE_PAGE_ACCESS_TOKEN = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+
+// Endpoint nhận webhook từ Pancake
+app.post("/webhook/pancake", async (req, res) => {
+  // Trả 200 ngay để Pancake biết đã nhận thành công
+  res.status(200).json({ received: true });
+
+  const { page_id, conversation_id, message, customer } = req.body;
+
+  // Bỏ qua nếu tin nhắn từ chính mình (tránh loop vô hạn)
+  if (req.body.is_page_sender) return;
+
+  console.log(`Tin nhắn từ ${customer?.name}: ${message?.text}`);
+
+  // Gửi tin nhắn reply qua Pancake API
+  try {
+    const response = await fetch(
+      `https://pages.fm/api/public_api/v1/pages/${page_id}/conversations/${conversation_id}/messages?page_access_token=${PANCAKE_PAGE_ACCESS_TOKEN}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reply_inbox",
+          message:
+            "Chào bạn! Shop đã nhận tin nhắn, nhân viên sẽ phản hồi trong ít phút.",
+        }),
+      }
+    );
+
+    const data = await response.json();
+    console.log("Reply sent:", data);
+  } catch (error) {
+    console.error("Lỗi gửi reply:", error.message);
+  }
+});
+
+app.listen(3000, () => {
+  console.log("Webhook server running on port 3000");
+});
+```
+
+### Giải thích luồng hoạt động
+
+```
+1. Khách nhắn "Shop ơi, tư vấn giúp mình" trên Messenger
+2. Pancake nhận tin nhắn → POST webhook đến https://your-server.com/webhook/pancake
+3. Server nhận payload → trả 200 ngay lập tức
+4. Server parse ra page_id, conversation_id từ payload
+5. Server gọi Pancake API gửi reply → "Shop đã nhận tin nhắn, nhân viên sẽ phản hồi trong ít phút."
+6. Khách nhận được tin nhắn trả lời trên Messenger
+```
+
+Toàn bộ quá trình diễn ra trong **vài giây**. Khách nhận được phản hồi ngay lập tức, kể cả khi nhân viên chưa online.
+
+### Ví dụ tương tự bằng Python
+
+```python
+from flask import Flask, request, jsonify
+import requests
+import os
+
+app = Flask(__name__)
+# Page Access Token — Pancake → Cài đặt → Công cụ
+PANCAKE_PAGE_ACCESS_TOKEN = os.environ.get("PANCAKE_PAGE_ACCESS_TOKEN")
+
+@app.route("/webhook/pancake", methods=["POST"])
+def handle_webhook():
+    data = request.json
+
+    page_id = data.get("page_id")
+    conversation_id = data.get("conversation_id")
+    customer = data.get("customer", {})
+    message = data.get("message", {})
+
+    print(f"Tin nhắn từ {customer.get('name')}: {message.get('text')}")
+
+    # Gửi reply qua Pancake API
+    url = f"https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/messages"
+    resp = requests.post(url, params={"page_access_token": PANCAKE_PAGE_ACCESS_TOKEN}, json={
+        "message": "Chào bạn! Shop đã nhận tin nhắn, nhân viên sẽ phản hồi trong ít phút."
+    })
+
+    print(f"Reply status: {resp.status_code}, response: {resp.json()}")
+    return jsonify({"received": True}), 200
+
+if __name__ == "__main__":
+    app.run(port=3000)
+```
+
+---
+
+## 5. Những lưu ý quan trọng khi triển khai
+
+### Tránh loop vô hạn
+
+Đây là lỗi phổ biến nhất khi mới kết nối webhook:
+
+```
+Bot gửi reply → Pancake nhận → Pancake trigger webhook "tin nhắn mới"
+→ Server nhận → Bot gửi reply → Pancake trigger webhook → ... lặp vô hạn
+```
+
+> [!WARNING]
+> Trong payload webhook, Pancake có trường phân biệt tin nhắn từ khách hay từ page. Bằng cách kiểm tra `from.id`. 
+> 
+> Nếu `from_id == page_id` thì tin nhắn được gửi từ page, nếu không thì sẽ là tin gửi bởi khách hàng. Hãy kiểm tra trường này và **chỉ xử lý tin nhắn từ khách**, bỏ qua tin nhắn do chính page gửi. Đây là bước bắt buộc — luôn thêm filter này trước khi viết bất kỳ logic nào khác.
+
+### Xử lý webhook nhanh, logic chạy ở background
+
+Pancake chờ response từ webhook endpoint trong thời gian giới hạn. Nếu server bạn mất quá lâu để xử lý, Pancake có thể coi đó là lỗi và retry — gây ra tình trạng nhận trùng.
+
+Quy tắc: **nhận request → trả 200 ngay → xử lý phía sau**.
+
+```javascript
+app.post("/webhook/pancake", async (req, res) => {
+  // Trả 200 ngay, không chờ xử lý xong
+  res.status(200).json({ received: true });
+
+  // Xử lý async phía sau
+  processMessage(req.body).catch(console.error);
+});
+```
+
+### Quy tắc 24 giờ của Facebook
+
+Với kênh Facebook Messenger, Facebook chỉ cho phép page gửi tin nhắn cho khách **trong vòng 24 giờ** kể từ tin nhắn cuối cùng của khách. Sau 24 giờ, bạn không thể gửi tin nhắn chủ động trừ khi sử dụng Message Tags được Facebook cho phép.
+
+Điều này không phải giới hạn của Pancake mà là chính sách từ Facebook. Hãy lưu ý khi thiết kế luồng tự động — đảm bảo reply nhanh trong khung thời gian cho phép.
+
+### Ghi log mọi thứ
+
+Khi mới triển khai, hãy log lại:
+
+- Mỗi webhook payload nhận được
+- Mỗi API call gửi đi và response nhận về
+- Các lỗi xảy ra
+
+Log giúp bạn debug nhanh khi có vấn đề. Sau khi hệ thống chạy ổn định, có thể giảm mức log xuống chỉ ghi lỗi.
+
+### Đa kênh — một endpoint xử lý tất cả
+
+Webhook Pancake nhận tin nhắn từ **tất cả các kênh** bạn đã kết nối: Facebook Messenger, Instagram DM, Zalo OA, Live Chat trên website... Tất cả đều gửi về cùng một webhook URL, cùng một định dạng.
+
+Bạn không cần tạo endpoint riêng cho từng kênh. Nếu cần phân biệt kênh nào gửi đến, hãy kiểm tra trường `platform` hoặc `page_id` trong payload.
+
+---
+
+## Câu hỏi thường gặp (FAQ)
+
+### Pancake Page Access Token là gì và khác gì User Access Token?
+
+**Page Access Token** xác thực API trên danh nghĩa **một page cụ thể** — dùng cho gần như mọi endpoint page-level (tin nhắn, hội thoại, khách hàng, thống kê). Token này **không hết hạn** trừ khi bị xoá hoặc regenerate. **User Access Token** xác thực ở **cấp tài khoản** — chỉ cần khi bạn muốn liệt kê pages hoặc programmatically sinh `page_access_token` cho nhiều page; hết hạn sau ~90 ngày hoặc khi logout.
+
+### Làm sao tránh webhook loop vô hạn khi reply tự động?
+
+Trong payload webhook, kiểm tra `from.id`. Nếu `from.id == page_id` thì tin nhắn do chính page gửi → **bỏ qua**. Chỉ xử lý reply khi tin nhắn đến từ khách hàng. Đây là filter bắt buộc, phải thêm TRƯỚC mọi logic khác.
+
+### Pancake có rate limit cho API gửi tin nhắn không?
+
+Có. Khi vượt quá tần suất cho phép, API trả về HTTP `429`. Hãy thêm delay giữa các request, sử dụng queue có exponential backoff, và batch tin nhắn nếu có thể.
+
+### Webhook Pancake hỗ trợ những kênh nào?
+
+Webhook Pancake nhận sự kiện từ **tất cả các kênh** đã kết nối: **Facebook Messenger, Instagram DM, Zalo OA, WhatsApp, Live Chat website, TikTok**... Tất cả đẩy về cùng một URL với cùng định dạng. Phân biệt kênh qua trường `platform` hoặc `page_id` trong payload.
+
+### Page Access Token có hết hạn không? Tôi cần làm gì khi nó bị thu hồi?
+
+**Không hết hạn theo thời gian** — chỉ bị vô hiệu khi bạn (a) regenerate token mới hoặc (b) xoá thủ công. Khi nhận HTTP `401` từ API, vào **Cài đặt → Công cụ** copy token mới và cập nhật trong env của server. Lưu ý: mỗi page chỉ có 1 token hợp lệ tại 1 thời điểm.
+
+### Sao tôi không thấy menu Webhook trong Pancake?
+
+Tính năng Webhook cần được **Pancake Support enable** thủ công cho shop của bạn. Liên hệ team hỗ trợ Pancake để yêu cầu mở. Chỉ user có quyền **admin** mới thấy được menu này sau khi enable.
+
+### Làm sao test webhook khi chưa có server thật?
+
+Dùng [webhook.site](https://webhook.site) — nó cho bạn 1 URL tạm thời, paste vào cấu hình webhook Pancake, gửi thử tin nhắn vào page, rồi quay lại webhook.site xem payload thật mà Pancake gửi. Đây là cách nhanh nhất để hiểu cấu trúc dữ liệu trước khi viết code.
+
+### Endpoint API gửi tin nhắn chính xác là gì?
+
+```
+POST https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/messages?page_access_token={token}
+```
+
+Lưu ý: path là `/api/public_api/v1/`, KHÔNG phải `/api/v1/`. Query param là `page_access_token`, KHÔNG phải `access_token`.
+
+---
+
+## Bài viết & công cụ liên quan
+
+- 📖 [Giới thiệu phần mềm Pancake — Giải pháp quản lý bán hàng đa kênh](/blog/gioi-thieu-pancake) — tổng quan trước khi tích hợp
+- 🔧 [Tool FB Info Lookup](/tools/fb-info) — trích nhanh `page_id` và metadata công khai từ link Facebook page/profile
+- 🛒 [Tool Shopee Affiliate Link](/tools/shopee-shortlink) — sinh link affiliate Shopee nhanh khi tích hợp e-commerce
+
+---
+
+## Tổng kết
+
+Chỉ với hai thứ — **Webhook nhận sự kiện** và **API gửi tin nhắn** — bạn đã có nền tảng để xây dựng mọi kịch bản tự động hoá trên Pancake:
+
+- Tự động trả lời tin nhắn ngoài giờ làm việc
+- Gửi xác nhận đơn hàng cho khách qua chat
+- Kết nối chatbot AI để tư vấn sản phẩm
+- Đồng bộ hội thoại với hệ thống CRM nội bộ
+
+Bài viết này là điểm khởi đầu. Từ đây, bạn có thể mở rộng tuỳ theo nhu cầu nghiệp vụ của mình.
+
+**Tài liệu API đầy đủ:** [developer.pancake.biz](https://developer.pancake.biz/)
+
+Nếu bạn cần hỗ trợ kỹ thuật trong quá trình kết nối, hãy liên hệ team hỗ trợ Pancake — chúng tôi luôn sẵn sàng giúp bạn.
+
+---
+
+*Bài viết cập nhật lần cuối: 25/05/2026. Endpoint và token format có thể thay đổi theo thời gian — luôn check [developer.pancake.biz](https://developer.pancake.biz) để có thông tin mới nhất.*
