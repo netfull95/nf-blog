@@ -1,5 +1,9 @@
 {
   "byKey": {
+    "pancake-list-conversations": {
+      "en": "get-pancake-conversations-list-api",
+      "vi": "lay-danh-sach-hoi-thoai-pancake-api"
+    },
     "intro-pancake": {
       "vi": "gioi-thieu-pancake",
       "en": "introducing-pancake"
@@ -10,8 +14,10 @@
     }
   },
   "bySlug": {
+    "get-pancake-conversations-list-api": "pancake-list-conversations",
     "gioi-thieu-pancake": "intro-pancake",
     "introducing-pancake": "intro-pancake",
+    "lay-danh-sach-hoi-thoai-pancake-api": "pancake-list-conversations",
     "pancake-webhook-and-api-send-message": "pancake-webhook-api",
     "pancake-webhook-va-api-gui-tin-nhan": "pancake-webhook-api"
   }

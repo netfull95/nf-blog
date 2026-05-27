@@ -1,0 +1,346 @@
+---
+title: "Lấy danh sách hội thoại Pancake API — Pagination, filter & sync vào hệ thống"
+date: "2026-05-28"
+lastmod: "2026-05-28"
+language: "vi"
+translationKey: "pancake-list-conversations"
+summary: "Hướng dẫn chi tiết cách gọi API GET /pages/{page_id}/conversations để lấy danh sách hội thoại Pancake — từ endpoint cơ bản, pagination bằng last_conversation_id, filter theo type/tags/post/thời gian, đến best practice sync số lượng lớn vào CRM."
+tags: ["Pancake", "API", "Page Access Token", "Conversations", "Pagination", "Pancake developer", "Facebook Messenger", "Tích hợp", "CRM"]
+---
+
+# Lấy danh sách hội thoại Pancake API — Pagination, filter & sync vào hệ thống
+
+> **TL;DR:** Endpoint chính là `GET https://pages.fm/api/public_api/v2/pages/{page_id}/conversations?page_access_token=...`, trả về **tối đa 60 hội thoại/lần**. Phân trang bằng **cursor** `last_conversation_id` (không phải offset). Hỗ trợ filter `type` (INBOX/COMMENT), `tags`, `post_ids`, `since/until`, `unread_first`, và `order_by` (`updated_at` | `inserted_at`). **Bắt buộc dùng `public_api/v2`** — phiên bản `v1` cho endpoint này đã **deprecated**, code cũ cần migrate sang `v2`.
+
+Sau khi đã biết cách [nhận webhook và gửi tin nhắn qua API Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan), bước tiếp theo trong hầu hết dự án tích hợp là: **đọc danh sách hội thoại** để đồng bộ vào CRM, dashboard, hoặc chạy báo cáo. Bài này tập trung vào endpoint `GET /pages/{page_id}/conversations` — từ basic cho đến pagination, filter, và pattern incremental sync.
+
+Nếu bạn chưa quen với Pancake, đọc [bài giới thiệu tổng quan](/blog/gioi-thieu-pancake) trước.
+
+---
+
+## 1. Khi nào cần API này?
+
+| Use case | Vì sao cần list conversations |
+|---|---|
+| **Đồng bộ vào CRM nội bộ** | Webhook chỉ bắn sự kiện realtime — không có dữ liệu lịch sử. Lần đầu sync cần API để backfill. |
+| **Dashboard tổng hợp đa page** | Tổng hợp số hội thoại mới/chưa đọc/tag theo page, theo ngày, theo nhân viên xử lý. |
+| **Báo cáo định kỳ** | Đếm hội thoại theo `tag`, theo `type` (INBOX vs COMMENT), theo timeframe. |
+| **Tìm hội thoại theo tag/post** | Lọc hội thoại có tag "Đặt hàng" hoặc tất cả comment ở 1 bài post quảng cáo cụ thể. |
+| **Audit & data warehouse** | Export hội thoại vào BigQuery/Postgres để phân tích sâu hơn. |
+
+> [!TIP]
+> Nếu chỉ cần **realtime** (mỗi tin nhắn mới reply ngay) thì dùng **webhook** là đủ — xem [hướng dẫn webhook + reply API](/blog/pancake-webhook-va-api-gui-tin-nhan). API list conversations dùng cho **backfill** hoặc **delta sync** định kỳ.
+
+---
+
+## 2. Chuẩn bị Page Access Token
+
+Mọi API page-level (bao gồm endpoint này) cần `page_access_token` — không phải `access_token` của user. Lấy token tại **Cài đặt → Công cụ (Tools) → Pancake API** trong dashboard của page.
+
+Chi tiết cách lấy + sự khác biệt User vs Page token đã có trong [bài Webhook & API gửi tin nhắn](/blog/pancake-webhook-va-api-gui-tin-nhan#1-chuẩn-bị-lấy-page-access-token). Không lặp lại ở đây.
+
+> [!IMPORTANT]
+> Token là chìa khoá toàn quyền với page — đọc và sửa được tin nhắn, khách hàng, tag. **Không commit** vào git, **không log** ra console. Luôn lưu trong `.env` hoặc secret manager.
+
+---
+
+## 3. Endpoint cơ bản
+
+```
+GET https://pages.fm/api/public_api/v2/pages/{page_id}/conversations?page_access_token={token}
+```
+
+> [!WARNING]
+> **Phiên bản `v1` đã deprecated** cho endpoint này. Nếu code cũ của bạn đang gọi `/api/public_api/v1/pages/{page_id}/conversations`, hãy **migrate sang `v2`** càng sớm càng tốt. Pancake có thể tắt v1 bất cứ lúc nào, gây gián đoạn dịch vụ. Đổi path là gần như đủ — response shape tương thích, chỉ khác cơ chế pagination (v2 dùng cursor `last_conversation_id`).
+
+| Tham số | Vị trí | Mô tả |
+|---|---|---|
+| `page_id` | URL path | ID của page (lấy từ webhook payload hoặc API [`GET /pages`](https://developer.pancake.biz/#/paths/pages/get)) |
+| `page_access_token` | Query | Page Access Token đã lấy ở bước 2 |
+
+### Ví dụ cURL tối giản
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/123456789/conversations" \
+  --data-urlencode "page_access_token=YOUR_PAGE_ACCESS_TOKEN"
+```
+
+### Response shape mẫu
+
+```json
+{
+  "conversations": [
+    {
+      "id": "conv_abc123",
+      "type": "INBOX",
+      "page_uid": "123456789",
+      "updated_at": "2026-05-28T08:14:22Z",
+      "inserted_at": "2026-05-20T03:11:05Z",
+      "tags": ["tag_id_1", "tag_id_2"],
+      "last_message": {
+        "text": "Shop ơi còn size M không ạ?",
+        "sender": "customer",
+        "created_at": "2026-05-28T08:14:22Z"
+      },
+      "participants": [
+        { "name": "Nguyễn Văn A", "email": null, "phone": "0901234567" }
+      ]
+    }
+    // ... tối đa 60 items
+  ]
+}
+```
+
+Các field quan trọng:
+
+- **`id`**: dùng làm `conversation_id` khi gọi API gửi tin nhắn hoặc lấy chi tiết messages.
+- **`type`**: `INBOX` (chat trực tiếp), `COMMENT` (bình luận trên post), `LIVESTREAM` (chat livestream).
+- **`updated_at`**: thời điểm hội thoại được cập nhật gần nhất — dùng để filter delta sync.
+- **`tags`**: mảng tag ID đã gắn cho hội thoại.
+- **`last_message`**: snippet tin nhắn mới nhất — hữu ích để hiển thị preview trong dashboard.
+
+---
+
+## 4. Pagination với `last_conversation_id` (cursor-based)
+
+API trả về **tối đa 60 hội thoại/request**, sắp xếp theo `updated_at` giảm dần (mặc định). Để lấy trang tiếp theo, bạn lấy `id` của conversation **cuối cùng** trong response trước, rồi truyền vào tham số `last_conversation_id`:
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/123456789/conversations" \
+  --data-urlencode "page_access_token=YOUR_PAGE_ACCESS_TOKEN" \
+  --data-urlencode "last_conversation_id=conv_xyz_last_id_from_previous_response"
+```
+
+Pancake dùng **cursor-based pagination**, không phải offset-based. Ý nghĩa:
+
+- Không có tham số `page=2`, `offset=60` như REST truyền thống.
+- Lặp đến khi response trả mảng `conversations` **rỗng** thì dừng — đó là dấu hiệu hết dữ liệu.
+- An toàn hơn offset khi dữ liệu thay đổi liên tục (không bị skip/duplicate khi có conversation mới chèn vào giữa).
+
+### Pseudo-code loop pagination (JavaScript)
+
+```javascript
+const BASE = 'https://pages.fm/api/public_api/v2'
+const PAGE_ID = process.env.PAGE_ID
+const TOKEN = process.env.PAGE_ACCESS_TOKEN
+
+async function fetchAllConversations() {
+  const all = []
+  let lastId = null
+
+  while (true) {
+    const params = new URLSearchParams({ page_access_token: TOKEN })
+    if (lastId) params.set('last_conversation_id', lastId)
+
+    const res = await fetch(`${BASE}/pages/${PAGE_ID}/conversations?${params}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    const { conversations = [] } = await res.json()
+    if (conversations.length === 0) break        // hết dữ liệu
+
+    all.push(...conversations)
+    lastId = conversations[conversations.length - 1].id
+
+    await new Promise(r => setTimeout(r, 300))   // throttle ~3 req/s, an toàn dưới giới hạn
+  }
+
+  return all
+}
+
+fetchAllConversations()
+  .then(list => console.log(`Loaded ${list.length} conversations`))
+  .catch(console.error)
+```
+
+> [!IMPORTANT]
+> **Rate limit Public API: 5 requests / page / giây.** Code trên sleep 300ms ≈ 3.3 req/s — nằm dưới ngưỡng. Nếu bạn chạy song song nhiều worker trên cùng 1 page, phải dùng token bucket / queue chung để tổng tốc độ không vượt 5 req/s, nếu không sẽ ăn HTTP 429.
+
+---
+
+## 5. Lọc & sắp xếp
+
+Đây là điểm mạnh của endpoint — toàn bộ filter chạy server-side, tiết kiệm bandwidth và tránh phải tải hết về client rồi mới lọc.
+
+| Tham số | Kiểu | Mô tả | Ví dụ |
+|---|---|---|---|
+| `type` | array string | Lọc theo loại hội thoại | `type=INBOX` hoặc `type=INBOX&type=COMMENT` |
+| `tags` | string | Lọc theo tag ID, cách nhau dấu phẩy. Lấy tag ID từ [`GET /pages/{page_id}/tags`](https://developer.pancake.biz/#/paths/pages-page_id--tags/get) — KHÔNG phải tên tag | `tags=tag_id_1,tag_id_2` |
+| `post_ids` | array string | Lọc COMMENT theo post ID. Lấy post ID từ [`GET /pages/{page_id}/posts`](https://developer.pancake.biz/#/paths/pages-page_id--posts/get). Truyền nhiều giá trị cách nhau bởi dấu phẩy | `post_ids=post_id_1,post_id_2,post_id_3` |
+| `since` | integer | Unix timestamp (**giây**) — chỉ lấy từ thời điểm này | `since=1748390400` |
+| `until` | integer | Unix timestamp (**giây**) — chỉ lấy đến thời điểm này | `until=1748476800` |
+| `unread_first` | boolean | Ưu tiên hội thoại chưa đọc lên đầu | `unread_first=true` |
+| `order_by` | enum | `updated_at` (mặc định) hoặc `inserted_at` | `order_by=inserted_at` |
+
+> [!WARNING]
+> **`since` và `until` dùng đơn vị GIÂY, không phải millisecond.** Lỗi rất phổ biến: JS dev quen với `Date.now()` (trả ra millisecond) — nếu pass thẳng vào, Pancake sẽ hiểu là timestamp ở năm 57000+ và trả về rỗng. Luôn chia 1000:
+> ```javascript
+> const since = Math.floor(Date.now() / 1000)       // ✓ đúng — second
+> const since = Date.now()                          // ✗ sai — millisecond
+> ```
+
+### Ví dụ 1 — Lọc INBOX chưa đọc trong 24h qua
+
+```bash
+SINCE=$(date -u -v-24H +%s)   # macOS; trên Linux dùng: date -u -d '24 hours ago' +%s
+
+curl -G "https://pages.fm/api/public_api/v2/pages/$PAGE_ID/conversations" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "type=INBOX" \
+  --data-urlencode "unread_first=true" \
+  --data-urlencode "since=$SINCE"
+```
+
+### Ví dụ 2 — Lọc theo tag "Đặt hàng"
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/$PAGE_ID/conversations" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "tags=tag_dat_hang_id"
+```
+
+### Ví dụ 3 — Tất cả comment ở 1 post quảng cáo
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/$PAGE_ID/conversations" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "type=COMMENT" \
+  --data-urlencode "post_ids=post_quang_cao_id"
+```
+
+---
+
+## 6. Lấy chi tiết messages của 1 hội thoại
+
+Sau khi list conversations, bạn thường cần load nội dung từng tin nhắn để hiển thị hoặc archive. Endpoint:
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/messages?page_access_token={token}
+```
+
+> [!WARNING]
+> Endpoint này nằm ở **`public_api/v1`** (khác với list conversations ở `v2`). Pancake đang trong quá trình migrate dần — luôn check lại [doc chính thức](https://developer.pancake.biz/) khi nghi ngờ.
+
+Pagination dùng `current_count` (offset-style): mỗi request trả 30 message gần nhất tính từ vị trí này.
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/messages" \
+  --data-urlencode "page_access_token=$TOKEN"
+
+# Lấy 30 message kế tiếp (cũ hơn):
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/messages" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "current_count=30"
+```
+
+Response chứa mảng `messages` với mỗi item gồm `from` (sender info), `message` (nội dung text), `inserted_at`, `type`, `is_hidden`, `is_removed`.
+
+---
+
+## 7. Polling vs Webhook — chọn cái nào?
+
+Câu hỏi mình nhận được nhiều nhất khi tư vấn tích hợp Pancake. Trả lời ngắn: **dùng cả hai**, nhưng cho mục đích khác nhau.
+
+| Tiêu chí | Webhook | Polling list conversations |
+|---|---|---|
+| **Latency** | Realtime (dưới 1 giây) | Phụ thuộc interval (1-60 phút) |
+| **Độ phức tạp setup** | Cần server có HTTPS public | Chỉ cần outbound HTTP — đơn giản hơn |
+| **Reliability** | Phụ thuộc uptime webhook URL — fail là mất event | Idempotent — retry an toàn |
+| **Backfill dữ liệu cũ** | Không thể | Tốt — đúng use case |
+| **Rate limit / chi phí** | Pancake gửi free, không đếm | Đếm vào quota — gọi nhiều bị throttle |
+| **Phù hợp cho** | Auto-reply, chatbot, notification | Sync CRM, báo cáo, audit, recovery khi webhook fail |
+
+> [!TIP]
+> **Pattern khuyến nghị**: webhook cho realtime + cron job mỗi **5-10 phút** gọi list conversations với `since=last_sync_timestamp` để **recover các event bị miss** khi webhook fail (server down, mạng lỗi, deploy...). Đây là pattern "**at-least-once delivery với reconciliation**" — chuẩn industry.
+
+---
+
+## 8. Best practice khi sync số lượng lớn
+
+Khi page có hàng chục nghìn hội thoại, sync sai cách rất dễ bị rate-limit hoặc trùng dữ liệu. Một số nguyên tắc:
+
+### Lưu cursor để incremental sync
+
+Sau mỗi lần sync, lưu lại `updated_at` của conversation mới nhất đã xử lý vào DB (`last_sync_at`). Lần sau dùng `since=last_sync_at` để chỉ lấy phần delta — tiết kiệm 90%+ request so với full sync.
+
+### Throttle giữa các request — giữ dưới 5 req/s
+
+**Public API Pancake giới hạn 5 requests / page / giây.** Sleep tối thiểu 200ms giữa các request pagination để an toàn (~5 req/s); khuyến nghị 300-500ms để có buffer. Nếu chạy nhiều worker song song trên cùng 1 page, dùng token bucket / queue chung — vượt ngưỡng sẽ ăn HTTP 429.
+
+### Retry với exponential backoff
+
+5xx và 429 → retry 3 lần với delay 1s, 2s, 4s. 4xx khác (401, 403, 404) → fail luôn, log lại để debug.
+
+### Idempotent upsert vào DB
+
+Dùng `id` của conversation làm primary key, dùng `INSERT ... ON CONFLICT UPDATE` (Postgres) hoặc `REPLACE INTO` (MySQL). Tránh trùng khi webhook và polling cùng insert.
+
+### Tránh race condition webhook + polling
+
+Khi cron polling chạy cùng lúc webhook đang ghi → khả năng cao có race condition. Giải pháp: dùng `updated_at` từ Pancake làm "version" — chỉ update nếu `updated_at` mới hơn record hiện có.
+
+---
+
+## 9. Lỗi thường gặp
+
+| Mã lỗi | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| **401 Unauthorized** | Token sai/hết hạn (User token thay vì Page token) | Kiểm tra lại token — phải là `page_access_token` lấy từ Tools |
+| **403 Forbidden** | Page bị disable, hoặc page chưa bật API | Vào dashboard Pancake, bật lại API trong Cài đặt → Công cụ |
+| **404 Not Found** | `page_id` sai, hoặc gọi nhầm `v1` thay vì `v2` | Verify `page_id` từ `GET /pages`, đảm bảo path là `/public_api/v2/` |
+| **Response `conversations: []` giữa chừng** | Đã đến cuối danh sách | Bình thường — dừng loop pagination |
+| **429 Too Many Requests** | Vượt 5 req/page/giây | Backoff 1-5s, throttle dưới 5 req/s, đồng bộ worker song song bằng queue chung |
+| **5xx Server Error** | Pancake side issue | Retry với exponential backoff, nếu kéo dài check [status Pancake](https://status.pancake.vn/) |
+
+---
+
+## 10. FAQ
+
+**Q: Tại sao endpoint list conversations dùng `v2` còn send message dùng `v1`?**
+A: Pancake đang migrate dần sang v2 — list conversations đã ở v2 với pagination cursor mới, còn endpoint message vẫn ở v1. Khi build, luôn check path trong doc chính thức để tránh nhầm.
+
+**Q: Tôi có thể lấy hết hội thoại trong 1 request được không?**
+A: Không. Hard limit 60 items/request. Phải dùng pagination với `last_conversation_id`.
+
+**Q: Có cách nào lọc theo customer phone/email không?**
+A: Endpoint list conversations không hỗ trợ trực tiếp. Để tìm theo customer cần dùng API `GET /pages/{page_id}/page_customers` riêng — bài viết khác sẽ cover.
+
+**Q: `since` và `until` dùng timestamp gì — millisecond hay second?**
+A: **Second** (Unix timestamp). Nếu code JS quen dùng `Date.now()` (millisecond) thì nhớ `Math.floor(Date.now() / 1000)`. Đây là lỗi cực kỳ phổ biến — xem warning ở [section 5](#5-lọc--sắp-xếp).
+
+**Q: Rate limit của Public API là bao nhiêu?**
+A: **5 requests / page / giây.** Nếu vượt, server trả HTTP 429. Khi chạy nhiều worker song song trên cùng 1 page, dùng token bucket/queue chung để tổng tốc độ không vượt giới hạn.
+
+**Q: `order_by=updated_at` vs `inserted_at` khác gì?**
+A: `updated_at` = thời điểm hội thoại có hoạt động cuối (tin nhắn mới, tag mới...) — phù hợp dashboard realtime. `inserted_at` = thời điểm tạo hội thoại — phù hợp báo cáo "hội thoại mới phát sinh trong tuần".
+
+**Q: Nên polling mỗi bao lâu 1 lần?**
+A: **5-10 phút/lần** là sweet spot cho hầu hết use case khi kết hợp với webhook — đủ nhanh để recover event bị miss, không tốn quota. Page rất nhỏ (dưới 50 conversation/ngày) có thể giãn ra 30 phút. **Không khuyến nghị** poll mỗi dưới 1 phút — vừa tốn quota vừa không cần thiết khi đã có webhook lo phần realtime.
+
+**Q: Sync về DB nội bộ thì nên dùng schema gì?**
+A: Tối thiểu: `id` (PK), `page_id`, `type`, `tags` (JSONB/JSON), `updated_at`, `inserted_at`, `last_message` (JSONB), `participants` (JSONB), `synced_at`. Index trên `(page_id, updated_at)` để truy vấn nhanh delta.
+
+**Q: Có realtime hơn webhook được không?**
+A: Không cần. Webhook đã là cơ chế realtime tốt nhất Pancake cung cấp. Nếu webhook bị delay là do server bạn xử lý chậm — tối ưu phía bạn (queue, async) chứ không phải Pancake.
+
+---
+
+## 11. Tổng kết
+
+- Endpoint chính: `GET /pages/{page_id}/conversations` trên `public_api/v2`, max 60 items/request.
+- Pagination: **cursor-based** với `last_conversation_id`. Không có offset.
+- Filter server-side: `type`, `tags`, `post_ids`, `since`, `until`, `unread_first`, `order_by`.
+- Pattern thực chiến: **webhook + polling delta** với `since=last_sync_at` để reconcile.
+- Best practice: throttle 500ms-1s, exponential backoff cho retry, idempotent upsert theo `id`.
+
+---
+
+## Bài viết & công cụ liên quan
+
+- [Hướng dẫn kết nối Webhook & API gửi tin nhắn trên Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan) — bài tiền đề về webhook + reply API.
+- [Giới thiệu Pancake — Nền tảng quản lý chat đa kênh](/blog/gioi-thieu-pancake) — bài giới thiệu tổng quan.
+- [Công cụ lấy Page ID từ link Facebook](/tools/fb-info) — convert URL fanpage thành `page_id` để gọi API.
+- [Pancake Developer Docs](https://developer.pancake.biz/) — tài liệu chính thức (OpenAPI spec).
+
+---
+
+*Last updated: 2026-05-28. Phiên bản API: `public_api/v2` cho list conversations, `public_api/v1` cho messages. Mọi thay đổi sẽ được cập nhật tại bài viết này.*

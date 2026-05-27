@@ -1,0 +1,346 @@
+---
+title: "Get Pancake Conversations List API — Pagination, filters & syncing at scale"
+date: "2026-05-28"
+lastmod: "2026-05-28"
+language: "en"
+translationKey: "pancake-list-conversations"
+summary: "Complete guide to the Pancake GET /pages/{page_id}/conversations endpoint — from basic calls and cursor pagination with last_conversation_id, to filtering by type/tags/post/timestamp, and best practices for syncing large volumes into a CRM."
+tags: ["Pancake", "API", "Page Access Token", "Conversations", "Pagination", "Pancake developer", "Facebook Messenger", "Integration", "CRM"]
+---
+
+# Get Pancake Conversations List API — Pagination, filters & syncing at scale
+
+> **TL;DR:** The main endpoint is `GET https://pages.fm/api/public_api/v2/pages/{page_id}/conversations?page_access_token=...`, returning **up to 60 conversations per call**. Pagination uses a **cursor** (`last_conversation_id`) — not offset. Supports filtering by `type` (INBOX/COMMENT), `tags`, `post_ids`, `since/until`, `unread_first`, and `order_by` (`updated_at` | `inserted_at`). **You must use `public_api/v2`** — the `v1` version of this endpoint is **deprecated** and existing code should migrate to `v2`.
+
+Once you know how to [receive webhooks and send messages via the Pancake API](/en/blog/pancake-webhook-and-api-send-message), the next step in most integration projects is **reading the list of conversations** to sync into a CRM, dashboard, or recurring report. This article focuses on `GET /pages/{page_id}/conversations` — from basics through pagination, filters, and incremental sync patterns.
+
+If you're new to Pancake, read the [overview introduction](/en/blog/introducing-pancake) first.
+
+---
+
+## 1. When do you need this API?
+
+| Use case | Why list conversations |
+|---|---|
+| **Sync into internal CRM** | Webhooks only deliver realtime events — no historical data. The first sync needs the API to backfill. |
+| **Multi-page aggregated dashboard** | Aggregate counts of new/unread/tagged conversations per page, per day, per agent. |
+| **Recurring reports** | Count conversations by `tag`, by `type` (INBOX vs COMMENT), by timeframe. |
+| **Find conversations by tag/post** | Filter conversations tagged "Order" or all comments under a specific ad post. |
+| **Audit & data warehouse** | Export conversations to BigQuery/Postgres for deeper analytics. |
+
+> [!TIP]
+> If you only need **realtime** behavior (reply immediately to each new message), **webhooks alone are enough** — see the [webhook + reply API guide](/en/blog/pancake-webhook-and-api-send-message). The list conversations API is for **backfill** or periodic **delta sync**.
+
+---
+
+## 2. Prepare your Page Access Token
+
+All page-level APIs (this endpoint included) require a `page_access_token` — not a user `access_token`. Generate the token at **Settings → Tools → Pancake API** in your page's dashboard.
+
+Detailed steps and the User vs Page token distinction are covered in the [Webhook & API guide](/en/blog/pancake-webhook-and-api-send-message#1-prepare-the-page-access-token). Not repeated here.
+
+> [!IMPORTANT]
+> The token grants full access to the page — it can read and modify messages, customers, and tags. **Never commit it** to git, **never log it** to the console. Always store it in `.env` or a secret manager.
+
+---
+
+## 3. Basic endpoint
+
+```
+GET https://pages.fm/api/public_api/v2/pages/{page_id}/conversations?page_access_token={token}
+```
+
+> [!WARNING]
+> **The `v1` version of this endpoint is deprecated.** If your existing code calls `/api/public_api/v1/pages/{page_id}/conversations`, **migrate to `v2`** as soon as possible. Pancake can disable v1 at any time, causing service disruption. Changing the path is almost enough — the response shape is compatible; only the pagination mechanism differs (v2 uses the `last_conversation_id` cursor).
+
+| Parameter | Location | Description |
+|---|---|---|
+| `page_id` | URL path | The page ID (from the webhook payload or [`GET /pages`](https://developer.pancake.biz/#/paths/pages/get)) |
+| `page_access_token` | Query | The Page Access Token from step 2 |
+
+### Minimal cURL example
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/123456789/conversations" \
+  --data-urlencode "page_access_token=YOUR_PAGE_ACCESS_TOKEN"
+```
+
+### Sample response shape
+
+```json
+{
+  "conversations": [
+    {
+      "id": "conv_abc123",
+      "type": "INBOX",
+      "page_uid": "123456789",
+      "updated_at": "2026-05-28T08:14:22Z",
+      "inserted_at": "2026-05-20T03:11:05Z",
+      "tags": ["tag_id_1", "tag_id_2"],
+      "last_message": {
+        "text": "Hi, do you still have size M in stock?",
+        "sender": "customer",
+        "created_at": "2026-05-28T08:14:22Z"
+      },
+      "participants": [
+        { "name": "John Doe", "email": null, "phone": "+1234567890" }
+      ]
+    }
+    // ... up to 60 items
+  ]
+}
+```
+
+Key fields:
+
+- **`id`**: used as `conversation_id` when calling the send-message or get-messages endpoints.
+- **`type`**: `INBOX` (direct chat), `COMMENT` (post comment), `LIVESTREAM` (livestream chat).
+- **`updated_at`**: timestamp of the most recent activity in the conversation — useful for delta-sync filtering.
+- **`tags`**: array of tag IDs attached to the conversation.
+- **`last_message`**: snippet of the most recent message — useful for dashboard previews.
+
+---
+
+## 4. Pagination with `last_conversation_id` (cursor-based)
+
+The API returns **up to 60 conversations per request**, sorted by `updated_at` descending (default). To fetch the next page, take the `id` of the **last** conversation in the previous response and pass it as `last_conversation_id`:
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/123456789/conversations" \
+  --data-urlencode "page_access_token=YOUR_PAGE_ACCESS_TOKEN" \
+  --data-urlencode "last_conversation_id=conv_xyz_last_id_from_previous_response"
+```
+
+Pancake uses **cursor-based pagination**, not offset-based. Implications:
+
+- No `page=2` or `offset=60` query parameter like traditional REST.
+- Loop until the response returns an **empty** `conversations` array — that's your end-of-data signal.
+- Safer than offset when data changes constantly (no skipped or duplicated rows when new conversations arrive mid-pagination).
+
+### Pseudo-code pagination loop (JavaScript)
+
+```javascript
+const BASE = 'https://pages.fm/api/public_api/v2'
+const PAGE_ID = process.env.PAGE_ID
+const TOKEN = process.env.PAGE_ACCESS_TOKEN
+
+async function fetchAllConversations() {
+  const all = []
+  let lastId = null
+
+  while (true) {
+    const params = new URLSearchParams({ page_access_token: TOKEN })
+    if (lastId) params.set('last_conversation_id', lastId)
+
+    const res = await fetch(`${BASE}/pages/${PAGE_ID}/conversations?${params}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    const { conversations = [] } = await res.json()
+    if (conversations.length === 0) break        // end of data
+
+    all.push(...conversations)
+    lastId = conversations[conversations.length - 1].id
+
+    await new Promise(r => setTimeout(r, 300))   // throttle ~3 req/s, safely under the limit
+  }
+
+  return all
+}
+
+fetchAllConversations()
+  .then(list => console.log(`Loaded ${list.length} conversations`))
+  .catch(console.error)
+```
+
+> [!IMPORTANT]
+> **Public API rate limit: 5 requests / page / second.** The code above sleeps 300ms ≈ 3.3 req/s — comfortably under the limit. If you run multiple workers in parallel against the same page, you must coordinate via a shared token bucket / queue so the combined rate stays under 5 req/s, otherwise you'll hit HTTP 429.
+
+---
+
+## 5. Filtering & sorting
+
+This is where the endpoint shines — all filters run server-side, saving bandwidth and avoiding the need to download everything client-side before filtering.
+
+| Parameter | Type | Description | Example |
+|---|---|---|---|
+| `type` | array string | Filter by conversation type | `type=INBOX` or `type=INBOX&type=COMMENT` |
+| `tags` | string | Filter by tag IDs, comma-separated. Get tag IDs from [`GET /pages/{page_id}/tags`](https://developer.pancake.biz/#/paths/pages-page_id--tags/get) — NOT tag names | `tags=tag_id_1,tag_id_2` |
+| `post_ids` | array string | Filter COMMENT conversations by post ID. Get post IDs from [`GET /pages/{page_id}/posts`](https://developer.pancake.biz/#/paths/pages-page_id--posts/get). Comma-separated for multiple values | `post_ids=post_id_1,post_id_2,post_id_3` |
+| `since` | integer | Unix timestamp (**seconds**) — only fetch from this point onward | `since=1748390400` |
+| `until` | integer | Unix timestamp (**seconds**) — only fetch up to this point | `until=1748476800` |
+| `unread_first` | boolean | Prioritize unread conversations | `unread_first=true` |
+| `order_by` | enum | `updated_at` (default) or `inserted_at` | `order_by=inserted_at` |
+
+> [!WARNING]
+> **`since` and `until` use SECONDS, not milliseconds.** A very common bug: JS developers used to `Date.now()` (which returns milliseconds) — if you pass it directly, Pancake interprets it as a timestamp in year 57000+ and returns nothing. Always divide by 1000:
+> ```javascript
+> const since = Math.floor(Date.now() / 1000)       // ✓ correct — seconds
+> const since = Date.now()                          // ✗ wrong — milliseconds
+> ```
+
+### Example 1 — Unread INBOX conversations in the last 24 hours
+
+```bash
+SINCE=$(date -u -v-24H +%s)   # macOS; on Linux use: date -u -d '24 hours ago' +%s
+
+curl -G "https://pages.fm/api/public_api/v2/pages/$PAGE_ID/conversations" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "type=INBOX" \
+  --data-urlencode "unread_first=true" \
+  --data-urlencode "since=$SINCE"
+```
+
+### Example 2 — Filter by the "Order" tag
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/$PAGE_ID/conversations" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "tags=tag_order_id"
+```
+
+### Example 3 — All comments on a single ad post
+
+```bash
+curl -G "https://pages.fm/api/public_api/v2/pages/$PAGE_ID/conversations" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "type=COMMENT" \
+  --data-urlencode "post_ids=ad_post_id"
+```
+
+---
+
+## 6. Get messages of a specific conversation
+
+After listing conversations, you usually need to load each conversation's messages to display or archive them. Endpoint:
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/messages?page_access_token={token}
+```
+
+> [!WARNING]
+> This endpoint lives under **`public_api/v1`** (unlike list conversations on `v2`). Pancake is in the middle of migrating — always double-check the [official docs](https://developer.pancake.biz/) when in doubt.
+
+Pagination uses `current_count` (offset-style): each request returns 30 messages prior to that index.
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/messages" \
+  --data-urlencode "page_access_token=$TOKEN"
+
+# Fetch the next 30 messages (older):
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/messages" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "current_count=30"
+```
+
+The response contains a `messages` array where each item has `from` (sender info), `message` (text content), `inserted_at`, `type`, `is_hidden`, `is_removed`.
+
+---
+
+## 7. Polling vs Webhook — which one to use?
+
+The question I get most often when consulting on Pancake integrations. Short answer: **use both**, but for different purposes.
+
+| Criteria | Webhook | Polling list conversations |
+|---|---|---|
+| **Latency** | Realtime (under 1 second) | Depends on interval (1-60 minutes) |
+| **Setup complexity** | Needs a public HTTPS server | Outbound HTTP only — simpler |
+| **Reliability** | Depends on webhook URL uptime — failures drop events | Idempotent — safe to retry |
+| **Backfill historical data** | Not possible | Excellent — its core use case |
+| **Rate limit / cost** | Free, not counted | Counts against quota — heavy use gets throttled |
+| **Best for** | Auto-reply, chatbots, notifications | CRM sync, reports, audits, recovery when webhooks fail |
+
+> [!TIP]
+> **Recommended pattern**: webhooks for realtime + a cron job every **5-10 minutes** calling list conversations with `since=last_sync_timestamp` to **recover events missed** when the webhook fails (server down, network blip, deploy...). This is the "**at-least-once delivery with reconciliation**" pattern — industry standard.
+
+---
+
+## 8. Best practices for large-scale sync
+
+When a page has tens of thousands of conversations, the wrong approach quickly leads to rate-limiting or duplicate data. A few principles:
+
+### Persist a cursor for incremental sync
+
+After each sync, save the `updated_at` of the most recently processed conversation to your DB (`last_sync_at`). Next time, use `since=last_sync_at` to fetch only the delta — saving 90%+ requests compared to a full sync.
+
+### Throttle between requests — stay under 5 req/s
+
+**The Pancake Public API is capped at 5 requests / page / second.** Sleep at least 200ms between pagination requests for safety (~5 req/s); 300-500ms is recommended for buffer. If multiple workers run in parallel against the same page, use a shared token bucket / queue — exceeding the limit gets you HTTP 429.
+
+### Retry with exponential backoff
+
+5xx and 429 → retry 3 times with delays of 1s, 2s, 4s. Other 4xx (401, 403, 404) → fail immediately and log for debugging.
+
+### Idempotent upserts to your DB
+
+Use the conversation `id` as primary key with `INSERT ... ON CONFLICT UPDATE` (Postgres) or `REPLACE INTO` (MySQL). Prevents duplicates when webhook and polling both insert.
+
+### Avoid webhook + polling race conditions
+
+When the polling cron runs while a webhook is writing → race conditions are likely. Solution: treat Pancake's `updated_at` as a "version" — only update if the incoming `updated_at` is newer than the existing record.
+
+---
+
+## 9. Common errors
+
+| Status code | Cause | Fix |
+|---|---|---|
+| **401 Unauthorized** | Wrong/expired token (using User token instead of Page token) | Recheck the token — must be a `page_access_token` from Tools |
+| **403 Forbidden** | Page is disabled, or API isn't enabled for the page | Open Pancake dashboard, enable API under Settings → Tools |
+| **404 Not Found** | Wrong `page_id`, or calling `v1` instead of `v2` | Verify `page_id` via `GET /pages`; ensure the path is `/public_api/v2/` |
+| **Response `conversations: []` mid-pagination** | Reached the end of the list | Normal — stop the pagination loop |
+| **429 Too Many Requests** | Exceeded 5 req/page/second | Backoff 1-5s, throttle under 5 req/s, coordinate parallel workers via shared queue |
+| **5xx Server Error** | Pancake-side issue | Retry with exponential backoff; if persistent, check [Pancake status](https://status.pancake.vn/) |
+
+---
+
+## 10. FAQ
+
+**Q: Why does list conversations use `v2` while send message uses `v1`?**
+A: Pancake is gradually migrating to v2 — list conversations is already on v2 with the new cursor pagination, while the message endpoints are still on v1. When building, always check the path in the official docs to avoid mixing them up.
+
+**Q: Can I fetch all conversations in a single request?**
+A: No. The hard limit is 60 items per request. You must paginate with `last_conversation_id`.
+
+**Q: Can I filter by customer phone/email?**
+A: The list conversations endpoint does not support this directly. To search by customer, use the separate `GET /pages/{page_id}/page_customers` API — a future article will cover it.
+
+**Q: What unit do `since` and `until` use — milliseconds or seconds?**
+A: **Seconds** (Unix timestamp). If your JS code uses `Date.now()` (milliseconds), wrap it in `Math.floor(Date.now() / 1000)`. This is an extremely common bug — see the warning in [section 5](#5-filtering--sorting).
+
+**Q: What is the Public API rate limit?**
+A: **5 requests / page / second.** Exceeding it returns HTTP 429. When running parallel workers against the same page, use a shared token bucket/queue so the combined rate stays under the limit.
+
+**Q: What's the difference between `order_by=updated_at` and `inserted_at`?**
+A: `updated_at` = time of the last activity (new message, new tag...) — suits realtime dashboards. `inserted_at` = time the conversation was created — suits "new conversations this week" reports.
+
+**Q: How often should I poll?**
+A: **Every 5-10 minutes** is the sweet spot for most use cases when combined with webhooks — fast enough to recover missed events, light on quota. Very small pages (under 50 conversations/day) can stretch to 30 minutes. **Don't poll more often than once per minute** — wasteful and unnecessary when webhooks already cover realtime.
+
+**Q: What schema should I use to sync into an internal DB?**
+A: Minimum: `id` (PK), `page_id`, `type`, `tags` (JSONB/JSON), `updated_at`, `inserted_at`, `last_message` (JSONB), `participants` (JSONB), `synced_at`. Index on `(page_id, updated_at)` for fast delta queries.
+
+**Q: Is there anything more realtime than webhooks?**
+A: No, and you don't need it. Webhooks are the best realtime mechanism Pancake offers. If webhooks feel delayed, your server is slow at processing — optimize on your side (queue, async), not Pancake's.
+
+---
+
+## 11. Summary
+
+- Main endpoint: `GET /pages/{page_id}/conversations` on `public_api/v2`, max 60 items per request.
+- Pagination: **cursor-based** with `last_conversation_id`. No offset.
+- Server-side filtering: `type`, `tags`, `post_ids`, `since`, `until`, `unread_first`, `order_by`.
+- Production pattern: **webhook + polling delta** with `since=last_sync_at` for reconciliation.
+- Best practices: throttle 500ms-1s, exponential backoff for retries, idempotent upserts by `id`.
+
+---
+
+## Related posts & tools
+
+- [Pancake Webhook & API Send Message Guide](/en/blog/pancake-webhook-and-api-send-message) — prerequisite post on webhooks + reply API.
+- [Introducing Pancake — Multi-channel Chat Management Platform](/en/blog/introducing-pancake) — high-level overview.
+- [Tool: Get Page ID from a Facebook link](/en/tools/fb-info) — convert a fanpage URL into the `page_id` you need for API calls.
+- [Pancake Developer Docs](https://developer.pancake.biz/) — official documentation (OpenAPI spec).
+
+---
+
+*Last updated: 2026-05-28. API versions: `public_api/v2` for list conversations, `public_api/v1` for messages. Any changes will be updated in this post.*
