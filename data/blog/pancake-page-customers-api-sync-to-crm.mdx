@@ -1,0 +1,384 @@
+---
+title: "Pancake Page Customers API — Sync customers into your CRM with notes & avatar"
+date: "2026-05-28"
+lastmod: "2026-05-28"
+language: "en"
+translationKey: "pancake-page-customers"
+summary: "Complete guide to the Pancake Page Customers API — listing customers with offset pagination, updating profiles, CRUD operations on internal notes, and the public no-auth avatar endpoint. Includes CRM sync patterns (HubSpot/Salesforce/Postgres), delta sync, schema suggestions, and warnings about timestamp unit pitfalls."
+tags: ["Pancake", "API", "Page Access Token", "Page Customers", "CRM", "Pancake developer", "Facebook Messenger", "Integration", "Customer Sync"]
+---
+
+# Pancake Page Customers API — Sync customers into your CRM with notes & avatar
+
+> **TL;DR:** The Page Customers cluster has 4 main endpoints on `https://pages.fm/api/public_api/v1`: `GET /pages/{page_id}/page_customers` (list — **offset-based** with `page_number` + `page_size`, max 100), `PUT /pages/{page_id}/page_customers/{id}` (update name/phone/gender/birthday), and `POST | PUT | DELETE /pages/{page_id}/page_customers/{id}/notes` (CRUD internal notes). `since` and `until` are **required** (in seconds). Bonus: `GET /pages/{page_id}/avatar/{psid}` is a **public** endpoint with no token required — usable directly as an `<img src>`.
+
+After you know how to [list Pancake conversations](/en/blog/get-pancake-conversations-list-api), the next step in most CRM/data-warehouse projects is **syncing customer information** — name, phone numbers, gender, internal notes — into your sales pipeline, marketing campaigns, or analytics reports.
+
+This post covers the entire **Customers cluster** in the Pancake API: list, update, CRUD notes, and a little-known public avatar endpoint.
+
+If you're new to the Pancake API, read the [introduction](/en/blog/introducing-pancake) and the [webhook + reply API guide](/en/blog/pancake-webhook-and-api-send-message) first.
+
+---
+
+## 1. When do you need this API?
+
+| Use case | Why Page Customers |
+|---|---|
+| **Sync into HubSpot / Salesforce** | Sales teams need to see Pancake customers in the primary CRM, not flip between two dashboards. |
+| **Sync phones to call center / SMS** | Auto-dialers need a normalized phone list pulled from the Pancake inbox. |
+| **Attach internal notes for VIPs** | Purchase history, priority handling, product notes — use the Notes API instead of tags (tags are finite, notes are free-text). |
+| **Display customer avatars on a dashboard** | Avoid self-hosting avatar files — use Pancake's public redirect endpoint. |
+| **Weekly/monthly new-customer reports** | Filter by `since`/`until` + `order_by=inserted_at` to count new customers. |
+| **Data warehouse / BI** | Export to BigQuery or Postgres for cohort, LTV, and segment analysis. |
+
+> [!TIP]
+> Pancake has **no webhook** for the "new customer created" event. The only way to detect new customers is **polling** `GET /page_customers` with `since=last_sync_at`. The pattern mirrors delta sync from [the list conversations post](/en/blog/get-pancake-conversations-list-api#7-polling-vs-webhook--which-one-to-use).
+
+---
+
+## 2. Prepare your Page Access Token
+
+All endpoints in this post require a `page_access_token`. The full setup is documented in the [Webhook & API guide](/en/blog/pancake-webhook-and-api-send-message#1-prepare-the-page-access-token) — not repeated here.
+
+---
+
+## 3. `GET /page_customers` — List customers
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/page_customers
+  ?page_access_token={token}
+  &since={unix_seconds}
+  &until={unix_seconds}
+  &page_number=1
+  &page_size=100
+  &order_by=inserted_at
+```
+
+| Parameter | Location | Required | Description |
+|---|---|---|---|
+| `page_id` | URL path | ✓ | Page ID |
+| `page_access_token` | Query | ✓ | Page Access Token |
+| `since` | Query | ✓ | Unix timestamp (**seconds**, UTC+0) — start time |
+| `until` | Query | ✓ | Unix timestamp (**seconds**, UTC+0) — end time |
+| `page_number` | Query | ✓ | Page number (≥ 1) |
+| `page_size` | Query | – | Items per page, max **100** |
+| `order_by` | Query | – | `inserted_at` (default) or `updated_at` — both sort DESC |
+
+> [!WARNING]
+> Unlike the [list conversations endpoint](/en/blog/get-pancake-conversations-list-api#4-pagination-with-last_conversation_id-cursor-based) which uses **cursor pagination**, the Page Customers endpoint uses **offset pagination** (`page_number` + `page_size`). This is the older style and lives on `public_api/v1`. When building a sync job, **do not reuse the pagination code from the previous post** — you have to write a separate loop incrementing `page_number`.
+
+### Response shape
+
+```json
+{
+  "total": 1245,
+  "customers": [
+    {
+      "psid": "1494977527279229",
+      "name": "John Doe",
+      "phone_numbers": ["+1234567890"],
+      "emails": ["john.doe@gmail.com"],
+      "gender": "male",
+      "birthday": "1990-05-12",
+      "lives_in": "Hanoi",
+      "inserted_at": "2026-05-20T03:11:05Z",
+      "notes": [
+        {
+          "id": "note_abc",
+          "message": "VIP customer, prioritize handling",
+          "created_at": 1748390400000,
+          "created_by": { "uid": "staff_uid_123", "fb_name": "Sales Agent 1" },
+          "images": [],
+          "links": []
+        }
+      ]
+    }
+  ],
+  "success": true
+}
+```
+
+### cURL example — list 100 new customers in the last 30 days
+
+```bash
+SINCE=$(date -u -v-30d +%s)   # macOS; Linux: date -u -d '30 days ago' +%s
+UNTIL=$(date -u +%s)
+
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL" \
+  --data-urlencode "page_number=1" \
+  --data-urlencode "page_size=100" \
+  --data-urlencode "order_by=inserted_at"
+```
+
+### JS pagination loop
+
+```javascript
+const BASE = 'https://pages.fm/api/public_api/v1'
+
+async function fetchAllCustomers({ pageId, token, since, until }) {
+  const all = []
+  let pageNumber = 1
+  const pageSize = 100
+
+  while (true) {
+    const params = new URLSearchParams({
+      page_access_token: token,
+      since: String(since),
+      until: String(until),
+      page_number: String(pageNumber),
+      page_size: String(pageSize),
+      order_by: 'inserted_at',
+    })
+
+    const res = await fetch(`${BASE}/pages/${pageId}/page_customers?${params}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    const { customers = [], total } = await res.json()
+    if (customers.length === 0) break          // end of data
+
+    all.push(...customers)
+
+    // Stop once we've fetched the full total (safety against edge cases)
+    if (all.length >= total) break
+
+    pageNumber += 1
+    await new Promise(r => setTimeout(r, 300))  // throttle, stay under 5 req/s
+  }
+
+  return all
+}
+```
+
+---
+
+## 4. What is `psid` — and how it links Customer / Conversation / Avatar
+
+`psid` (**Page-Scoped User ID**) is the unique ID of a user **within a single page's scope**. The same Facebook user messaging two different pages gets two different `psid` values — this is Facebook Platform's privacy mechanism.
+
+In the Pancake API, `psid` is the **join key** across three endpoints:
+
+| Endpoint | Field containing `psid` |
+|---|---|
+| `GET /pages/{page_id}/page_customers` | `customer.psid` |
+| `GET /pages/{page_id}/conversations` | `conversation.from.id` |
+| `GET /pages/{page_id}/avatar/{psid}` | path param |
+
+In other words, you take `from.id` from a conversation → look it up in your customers table (PK = `psid`) → use the same `psid` to render the avatar `<img src="...avatar/{psid}">`. This is how you build a CRM dashboard that shows full customer info with their photo.
+
+> [!TIP]
+> `psid` is **immutable within a page** — it never changes, even when the customer renames their Facebook profile. It's perfectly safe to use as a primary key in your internal DB.
+
+---
+
+## 5. `PUT /page_customers/{id}` — Update customer info
+
+```
+PUT https://pages.fm/api/public_api/v1/pages/{page_id}/page_customers/{page_customer_id}
+  ?page_access_token={token}
+```
+
+`page_customer_id` is the `id` field (UUID) from the list API response — **not `psid`**. The two are different: `psid` is the Facebook-scoped ID, while `page_customer_id` is Pancake's internal UUID.
+
+### Request body
+
+```json
+{
+  "changes": {
+    "name": "John Doe (verified)",
+    "phone_numbers": ["+1234567890", "+1987654321"],
+    "gender": "male",
+    "birthday": "1990-05-12"
+  }
+}
+```
+
+> [!WARNING]
+> The update API **only accepts 4 fields**: `name`, `phone_numbers`, `gender` (enum: `male` | `female` | `unknown`), `birthday` (format `YYYY-MM-DD`). You **cannot update** `emails` (auto-detected from messages), `lives_in`, `psid` (immutable), or any custom fields. If your CRM has extra fields, store them on your side — they don't sync back to Pancake.
+
+### cURL example — add a second phone number
+
+```bash
+curl -X PUT "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "changes": {
+      "phone_numbers": ["+1234567890", "+1987654321"]
+    }
+  }'
+```
+
+> [!IMPORTANT]
+> `phone_numbers` is a **full array replacement**, not an append. To add a new number while keeping existing ones → GET first, merge the array, then PUT. Passing only the new number will **wipe** the old ones.
+
+---
+
+## 6. Notes — CRUD customer notes (Pancake's CRM-lite)
+
+Notes let staff attach free-text annotations to each customer: purchase history, handling priority, complaints, etc. Each note has an author, timestamp, and edit history.
+
+### 6.1. Create a note
+
+```bash
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID/notes?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "VIP customer, placed 3 orders in 2026. Prioritize reply under 30 minutes."
+  }'
+```
+
+### 6.2. Update a note
+
+```bash
+curl -X PUT "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID/notes?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "note_id": "note_abc",
+    "message": "Updated: switch to under-15-minute priority"
+  }'
+```
+
+`note_id` comes from `notes[].id` in the `GET /page_customers` response.
+
+### 6.3. Delete a note
+
+```bash
+curl -X DELETE "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID/notes?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "note_id": "note_abc" }'
+```
+
+### 6.4. Major pitfall — mixed timestamp units
+
+> [!WARNING]
+> **Pancake mixes two different timestamp units in the same response:**
+> - Query params `since` / `until` use **SECONDS** (10 digits, e.g. `1748390400`)
+> - `notes[].created_at`, `removed_at`, `updated_at` in the response use **MILLISECONDS** (13 digits, e.g. `1748390400000`)
+>
+> This is a very common bug when mapping into a database. Be explicit about units:
+> ```javascript
+> const noteCreatedAt = new Date(note.created_at)              // ms — correct for Date
+> const customerInsertedFromQuery = new Date(since * 1000)     // s → ms
+> ```
+
+### 6.5. Notes API limitations
+
+- **POST/PUT accept text only** — you cannot upload images/links directly via the API. The `notes[].images[]` and `links[]` fields in the response only contain data when the note is created from Pancake's web dashboard.
+- **No dedicated list-notes endpoint** — you have to fetch them through `GET /page_customers` (notes are nested in each customer object).
+- **No batch insert** — one request per note, throttle to the 5 req/s rate limit.
+
+---
+
+## 7. `GET /avatar/{psid}` — public endpoint, no token required
+
+```
+GET https://pancake.vn/api/v1/pages/{page_id}/avatar/{psid}
+```
+
+Returns a `301 Moved Permanently` redirect to the actual avatar URL on Pancake's CDN (`https://content.pancake.vn/...`). You can use it directly as an `<img>` src:
+
+```html
+<img src="https://pancake.vn/api/v1/pages/256469571178082/avatar/1494977527279229"
+     alt="Customer avatar"
+     loading="lazy" />
+```
+
+**Pros:**
+- No token required → safe to use on a public frontend.
+- Browsers follow the redirect automatically → simpler code.
+- Pancake handles CDN caching → no bandwidth/storage cost on your side.
+
+**Cons:**
+- Still an external dependency → if Pancake is down, avatars are missing.
+- No direct CDN URL → every render adds one redirect hop.
+
+> [!TIP]
+> For an internal CRM dashboard loading many avatars, you can run a periodic job to cache them on your own S3/CDN to reduce the dependency. For public apps or low render volume, hitting the Pancake endpoint directly is fine.
+
+---
+
+## 8. Rate limits & best practices
+
+- **Rate limit**: 5 req/page/second (shared across the entire Public API). Throttling 200-500ms between requests is safe.
+- **Normalize phones before PUT**: Pancake does not auto-strip `+`, spaces, or dashes — clean to a standardized format before sending.
+- **Notes have no bulk insert**: when importing historical notes from a legacy CRM, throttle yourself to ~200ms per note.
+- **Retry with exponential backoff for 429 and 5xx**: 1s, 2s, 4s. Other 4xx — fail immediately.
+- **Persist the raw response** (e.g., a `raw` JSONB column) to debug schema drift when Pancake updates the API later.
+
+---
+
+## 9. Common errors
+
+| Code | Cause | Fix |
+|---|---|---|
+| **400** | Wrong `note_id` on PUT/DELETE, invalid `gender` enum, or bad `birthday` format | Validate input first; `gender` only accepts `male`/`female`/`unknown` |
+| **401 Unauthorized** | Wrong/expired token | Verify token, use `page_access_token` (not user `access_token`) |
+| **403 Forbidden** | Page hasn't enabled the API, or token lacks customer scope | Enable API in dashboard, regenerate token |
+| **404 Not Found** | `page_customer_id` or `note_id` doesn't exist | Verify the ID from a GET response before PUT/DELETE |
+| **`customers: []`** | No customers in the `since`/`until` window, or page has no customers yet | Widen `since`, or check the `total` field |
+| **429** | Exceeded 5 req/page/second | Backoff, throttle, coordinate parallel workers via shared queue |
+| **Phone rejected after PUT** | Invalid format | Strip special characters, normalize to a clean numeric format |
+
+---
+
+## 10. FAQ
+
+**Q: Can I create a new customer via the API?**
+A: **No.** Customers are created automatically when someone messages the inbox or comments for the first time. This API only **reads and updates** existing customers.
+
+**Q: Does `psid` ever change?**
+A: **No** — immutable within a page. This is a Facebook Platform guarantee.
+
+**Q: Why does the same customer show up as two different records when they message two of my pages?**
+A: Because `psid` is **page-scoped**. Same FB user, different page → different `psid` → two records in your DB. To merge across pages, use `phone_numbers` or `name + birthday` as a merge key on your side (there's no automatic-merge API).
+
+**Q: Can I get the customer's email via the API?**
+A: **Yes.** Pancake **automatically detects email addresses** in customer messages (regex parse) and stores them in the customer's `emails` field. Email is **not entered manually** in the dashboard — it depends entirely on whether the customer typed an email in chat. So: if a customer only asks for prices or leaves a phone number without sending an email → the `emails` field will be empty. The same auto-detection applies to `phone_numbers` (beyond numbers customers enter via forms).
+
+**Q: Is there a webhook event for new customers?**
+A: **No.** The only option is polling `GET /page_customers` with `since=last_sync_at`. A 1-6 hour interval works well depending on volume.
+
+**Q: Do notes support images/files?**
+A: The response has `images[]` and `links[]` fields, but the POST/PUT APIs **only accept text** (`message`). Images/links can only be created from Pancake's web dashboard.
+
+**Q: How should I map fields to Salesforce/HubSpot?**
+A: Basic mapping:
+- `id` → External ID (custom field, unique key for dedup)
+- `name` → First/Last Name (split on the last space — imperfect but workable)
+- `phone_numbers[0]` → Primary Phone, `phone_numbers[1+]` → Mobile/Alt Phone
+- `gender`, `birthday`, `lives_in` → custom fields
+- `notes` → activity timeline or Note object (Salesforce has a dedicated `Note` object)
+
+**Q: Does the avatar endpoint have a rate limit?**
+A: The public endpoint doesn't count against the Page API quota. But if you render thousands of avatars per second from the same IP, Pancake's CDN may throttle you on their side — cache them on your side for high traffic.
+
+**Q: Is `notes[].created_at` being 13 digits a bug?**
+A: **Not a bug — it's milliseconds.** Pancake mixes units (queries use seconds, notes response uses milliseconds). See [section 6.4](#64-major-pitfall--mixed-timestamp-units).
+
+---
+
+## 11. Summary
+
+- 4 main endpoints: `GET /page_customers`, `PUT /page_customers/{id}`, `POST | PUT | DELETE /page_customers/{id}/notes`. All on `public_api/v1`.
+- **Offset-style** pagination (`page_number` + `page_size`, max 100) — different from the cursor pagination used by list conversations.
+- `psid` is the join key across customer, conversation, and avatar endpoints.
+- Update supports only 4 fields: `name`, `phone_numbers`, `gender`, `birthday`. `phone_numbers` is a full replacement — merge before PUT.
+- Notes are text-only CRM-lite. **Mixed time units**: queries use seconds, notes timestamps use milliseconds.
+- Avatar endpoint is public — usable directly as `<img src>`, saving storage.
+- Sync pattern: hourly delta with `since=last_sync_at`, upsert by `psid`, throttle under 5 req/s.
+
+---
+
+## Related posts & tools
+
+- [Get Pancake Conversations List API](/en/blog/get-pancake-conversations-list-api) — sister endpoint, shares the same delta-sync pattern.
+- [Pancake Webhook & API Send Message Guide](/en/blog/pancake-webhook-and-api-send-message) — base for Page Access Token setup.
+- [Introducing Pancake — Multi-channel Chat Management Platform](/en/blog/introducing-pancake) — high-level overview.
+- [Tool: Get Page ID from a Facebook link](/en/tools/fb-info) — convert a fanpage URL into the `page_id` you need.
+- [Pancake Developer Docs](https://developer.pancake.biz/) — official documentation (OpenAPI spec).
+
+---
+
+*Last updated: 2026-05-28. API version: `public_api/v1` for all Page Customers endpoints. The avatar endpoint at `pancake.vn/api/v1/...` requires no auth.*

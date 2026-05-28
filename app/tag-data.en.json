@@ -1,16 +1,18 @@
 {
-  "pancake": 3,
-  "api": 2,
-  "page-access-token": 2,
+  "pancake": 4,
+  "api": 3,
+  "page-access-token": 3,
   "conversations": 1,
   "pagination": 1,
-  "pancake-developer": 2,
-  "facebook-messenger": 2,
-  "integration": 2,
-  "crm": 1,
-  "sales-management": 1,
-  "social-commerce": 1,
+  "pancake-developer": 3,
+  "facebook-messenger": 3,
+  "integration": 3,
+  "crm": 2,
+  "page-customers": 1,
+  "customer-sync": 1,
   "webhook": 1,
   "automation": 1,
-  "chatbot": 1
+  "chatbot": 1,
+  "sales-management": 1,
+  "social-commerce": 1
 }

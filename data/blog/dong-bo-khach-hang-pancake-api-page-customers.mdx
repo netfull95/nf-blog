@@ -1,0 +1,384 @@
+---
+title: "Page Customers API Pancake — Đồng bộ khách hàng vào CRM kèm ghi chú & avatar"
+date: "2026-05-28"
+lastmod: "2026-05-28"
+language: "vi"
+translationKey: "pancake-page-customers"
+summary: "Hướng dẫn đầy đủ Page Customers API của Pancake — list khách hàng với offset pagination, update thông tin, CRUD ghi chú nội bộ, và endpoint avatar public không cần token. Kèm pattern sync vào CRM (HubSpot/Salesforce/Postgres) với delta sync, schema gợi ý và cảnh báo các pitfall về đơn vị thời gian."
+tags: ["Pancake", "API", "Page Access Token", "Page Customers", "CRM", "Pancake developer", "Facebook Messenger", "Tích hợp", "Customer Sync"]
+---
+
+# Page Customers API Pancake — Đồng bộ khách hàng vào CRM kèm ghi chú & avatar
+
+> **TL;DR:** Cụm Page Customers gồm 4 endpoint chính trên `https://pages.fm/api/public_api/v1`: `GET /pages/{page_id}/page_customers` (list — **offset-based** với `page_number` + `page_size` max 100), `PUT /pages/{page_id}/page_customers/{id}` (update name/phone/gender/birthday), và `POST | PUT | DELETE /pages/{page_id}/page_customers/{id}/notes` (CRUD ghi chú nội bộ). `since` và `until` **bắt buộc** (đơn vị giây). Bonus: `GET /pages/{page_id}/avatar/{psid}` là endpoint **public**, không cần token — dùng trực tiếp làm `<img src>`.
+
+Sau khi đã biết cách [lấy danh sách hội thoại Pancake](/blog/lay-danh-sach-hoi-thoai-pancake-api), bước tiếp theo trong hầu hết dự án CRM/data warehouse là **đồng bộ thông tin khách hàng** — tên, số điện thoại, giới tính, ghi chú nội bộ — để gắn với pipeline bán hàng, chiến dịch marketing, hoặc báo cáo phân tích.
+
+Bài này cover toàn bộ **Customers cluster** trong Pancake API: list, update, CRUD notes, và một endpoint avatar public mà ít người biết.
+
+Nếu chưa quen với Pancake API, đọc trước [bài giới thiệu](/blog/gioi-thieu-pancake) và [bài webhook + reply API](/blog/pancake-webhook-va-api-gui-tin-nhan).
+
+---
+
+## 1. Khi nào cần API này?
+
+| Use case | Vì sao cần Page Customers |
+|---|---|
+| **Đồng bộ vào HubSpot / Salesforce** | Sales team cần xem khách Pancake trong CRM chính, không phải mở 2 dashboard. |
+| **Đồng bộ phone vào call center / SMS** | Tổng đài auto-dial cần list số điện thoại được chuẩn hoá từ inbox Pancake. |
+| **Gắn note nội bộ cho khách VIP** | Lịch sử mua hàng, ưu tiên xử lý, chú thích sản phẩm — dùng Notes API thay vì tag (tag hữu hạn, note free-text). |
+| **Hiển thị avatar khách trên dashboard** | Tránh tải avatar về self-host, dùng endpoint redirect public của Pancake. |
+| **Báo cáo khách mới theo tuần / tháng** | Filter `since`/`until` + `order_by=inserted_at` để đếm new customer. |
+| **Data warehouse / BI** | Export sang BigQuery, Postgres để phân tích cohort, LTV, segment. |
+
+> [!TIP]
+> Pancake **không có webhook** cho event "khách hàng mới được tạo". Cách duy nhất để biết khách mới là **polling** `GET /page_customers` với `since=last_sync_at`. Pattern này tương tự delta sync ở [bài list conversations](/blog/lay-danh-sach-hoi-thoai-pancake-api#7-polling-vs-webhook--chọn-cái-nào).
+
+---
+
+## 2. Chuẩn bị Page Access Token
+
+Toàn bộ endpoint trong bài này cần `page_access_token`. Cách lấy đã có trong [bài Webhook & API gửi tin nhắn](/blog/pancake-webhook-va-api-gui-tin-nhan#1-chuẩn-bị-lấy-page-access-token) — không lặp lại ở đây.
+
+---
+
+## 3. `GET /page_customers` — Lấy danh sách khách hàng
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/page_customers
+  ?page_access_token={token}
+  &since={unix_seconds}
+  &until={unix_seconds}
+  &page_number=1
+  &page_size=100
+  &order_by=inserted_at
+```
+
+| Tham số | Vị trí | Bắt buộc | Mô tả |
+|---|---|---|---|
+| `page_id` | URL path | ✓ | ID của page |
+| `page_access_token` | Query | ✓ | Page Access Token |
+| `since` | Query | ✓ | Unix timestamp (**giây**, UTC+0) — thời điểm bắt đầu |
+| `until` | Query | ✓ | Unix timestamp (**giây**, UTC+0) — thời điểm kết thúc |
+| `page_number` | Query | ✓ | Số trang (≥ 1) |
+| `page_size` | Query | – | Số items/trang, tối đa **100** |
+| `order_by` | Query | – | `inserted_at` (mặc định) hoặc `updated_at` — đều sort DESC |
+
+> [!WARNING]
+> Khác với [endpoint list conversations](/blog/lay-danh-sach-hoi-thoai-pancake-api#4-pagination-với-last_conversation_id-cursor-based) dùng **cursor pagination**, endpoint Page Customers dùng **offset pagination** (`page_number` + `page_size`). Đây là kiểu cũ hơn, nằm ở `public_api/v1`. Khi build sync job, đừng tái sử dụng code pagination từ bài trước — phải viết riêng vòng lặp tăng `page_number`.
+
+### Response shape
+
+```json
+{
+  "total": 1245,
+  "customers": [
+    {
+      "psid": "1494977527279229",
+      "name": "Nguyễn Văn A",
+      "phone_numbers": ["0901234567"],
+      "emails": ["nguyenvana@gmail.com"],
+      "gender": "male",
+      "birthday": "1990-05-12",
+      "lives_in": "Hà Nội",
+      "inserted_at": "2026-05-20T03:11:05Z",
+      "notes": [
+        {
+          "id": "note_abc",
+          "message": "Khách VIP, ưu tiên xử lý",
+          "created_at": 1748390400000,
+          "created_by": { "uid": "staff_uid_123", "fb_name": "Sales NV1" },
+          "images": [],
+          "links": []
+        }
+      ]
+    }
+  ],
+  "success": true
+}
+```
+
+### Ví dụ cURL — list 100 khách mới trong 30 ngày qua
+
+```bash
+SINCE=$(date -u -v-30d +%s)   # macOS; Linux: date -u -d '30 days ago' +%s
+UNTIL=$(date -u +%s)
+
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL" \
+  --data-urlencode "page_number=1" \
+  --data-urlencode "page_size=100" \
+  --data-urlencode "order_by=inserted_at"
+```
+
+### Vòng lặp pagination JS
+
+```javascript
+const BASE = 'https://pages.fm/api/public_api/v1'
+
+async function fetchAllCustomers({ pageId, token, since, until }) {
+  const all = []
+  let pageNumber = 1
+  const pageSize = 100
+
+  while (true) {
+    const params = new URLSearchParams({
+      page_access_token: token,
+      since: String(since),
+      until: String(until),
+      page_number: String(pageNumber),
+      page_size: String(pageSize),
+      order_by: 'inserted_at',
+    })
+
+    const res = await fetch(`${BASE}/pages/${pageId}/page_customers?${params}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    const { customers = [], total } = await res.json()
+    if (customers.length === 0) break          // hết dữ liệu
+
+    all.push(...customers)
+
+    // Dừng khi đã lấy đủ total (an toàn nếu API trả thừa do edge case)
+    if (all.length >= total) break
+
+    pageNumber += 1
+    await new Promise(r => setTimeout(r, 300))  // throttle dưới 5 req/s
+  }
+
+  return all
+}
+```
+
+---
+
+## 4. `psid` là gì — và liên kết giữa Customer / Conversation / Avatar
+
+`psid` (**Page-Scoped User ID**) là ID duy nhất của 1 user **trong phạm vi 1 page**. Cùng 1 user Facebook nhưng nhắn vào 2 page khác nhau sẽ có 2 `psid` khác nhau — đây là cơ chế privacy của Facebook Platform.
+
+Trong Pancake API, `psid` là **khoá liên kết** giữa 3 endpoint:
+
+| Endpoint | Trường chứa `psid` |
+|---|---|
+| `GET /pages/{page_id}/page_customers` | `customer.psid` |
+| `GET /pages/{page_id}/conversations` | `conversation.from.id` |
+| `GET /pages/{page_id}/avatar/{psid}` | path param |
+
+Nói cách khác, từ 1 conversation bạn lấy `from.id` → tra vào table customers (PK = `psid`) → dùng cùng `psid` để render avatar `<img src="...avatar/{psid}">`. Đây là cách build CRM dashboard hiển thị đầy đủ thông tin khách kèm hình.
+
+> [!TIP]
+> `psid` **bất biến trong phạm vi 1 page** — không bao giờ thay đổi kể cả khi khách đổi tên Facebook. Dùng làm primary key trong DB nội bộ là tuyệt đối an toàn.
+
+---
+
+## 5. `PUT /page_customers/{id}` — Cập nhật thông tin khách
+
+```
+PUT https://pages.fm/api/public_api/v1/pages/{page_id}/page_customers/{page_customer_id}
+  ?page_access_token={token}
+```
+
+`page_customer_id` lấy từ field `id` (UUID) trong response của API list — **không phải `psid`**. Hai field này khác nhau: `psid` là ID Facebook-scoped, `page_customer_id` là UUID nội bộ của Pancake.
+
+### Request body
+
+```json
+{
+  "changes": {
+    "name": "Nguyễn Văn A (đã verify)",
+    "phone_numbers": ["0901234567", "0987654321"],
+    "gender": "male",
+    "birthday": "1990-05-12"
+  }
+}
+```
+
+> [!WARNING]
+> API update **chỉ chấp nhận 4 field**: `name`, `phone_numbers`, `gender` (enum: `male` | `female` | `unknown`), `birthday` (format `YYYY-MM-DD`). **Không update được** `emails` (auto-detect từ tin nhắn), `lives_in`, `psid` (bất biến), hoặc thêm field custom. Nếu CRM bạn có field bổ sung, lưu phía bạn — không sync ngược về Pancake.
+
+### Ví dụ cURL — thêm số phone thứ 2 cho khách
+
+```bash
+curl -X PUT "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "changes": {
+      "phone_numbers": ["0901234567", "0987654321"]
+    }
+  }'
+```
+
+> [!IMPORTANT]
+> `phone_numbers` là **mảng thay thế hoàn toàn**, không phải append. Muốn thêm 1 số mới mà giữ số cũ → phải GET trước, merge mảng, rồi PUT lại. Truyền chỉ số mới sẽ **xoá** các số cũ.
+
+---
+
+## 6. Notes — CRUD ghi chú khách hàng (CRM-lite của Pancake)
+
+Notes là tính năng cho phép staff gắn ghi chú free-text vào từng khách hàng: lịch sử mua, ưu tiên xử lý, complaint, v.v. Mỗi note có author, timestamp, history sửa.
+
+### 6.1. Thêm note mới
+
+```bash
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID/notes?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Khách VIP, đã mua 3 đơn năm 2026. Ưu tiên xử lý phản hồi dưới 30 phút."
+  }'
+```
+
+### 6.2. Sửa note
+
+```bash
+curl -X PUT "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID/notes?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "note_id": "note_abc",
+    "message": "Đã update: chuyển sang ưu tiên xử lý dưới 15 phút"
+  }'
+```
+
+`note_id` lấy từ field `notes[].id` trong response của `GET /page_customers`.
+
+### 6.3. Xoá note
+
+```bash
+curl -X DELETE "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/page_customers/$CUSTOMER_ID/notes?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "note_id": "note_abc" }'
+```
+
+### 6.4. Pitfall lớn — đơn vị thời gian trộn lẫn
+
+> [!WARNING]
+> **Pancake trộn 2 đơn vị thời gian khác nhau trong cùng response:**
+> - Query params `since` / `until` dùng **GIÂY** (10 chữ số, ví dụ `1748390400`)
+> - `notes[].created_at`, `removed_at`, `updated_at` trong response dùng **MILLISECOND** (13 chữ số, ví dụ `1748390400000`)
+>
+> Đây là nguồn bug rất phổ biến khi mapping vào DB. Dùng cờ rõ ràng:
+> ```javascript
+> const noteCreatedAt = new Date(note.created_at)              // ms — đúng cho Date
+> const customerInsertedFromQuery = new Date(since * 1000)     // s → ms
+> ```
+
+### 6.5. Giới hạn của Notes API
+
+- **Chỉ POST/PUT được text** — không upload trực tiếp được image/link qua API. Field `notes[].images[]` và `links[]` trong response chỉ có dữ liệu khi note được tạo từ dashboard web của Pancake.
+- **Không có endpoint list notes riêng** — phải lấy qua `GET /page_customers` (notes nested trong customer object).
+- **Không có batch insert** — mỗi note 1 request, throttle theo rate limit 5 req/s.
+
+---
+
+## 7. `GET /avatar/{psid}` — endpoint public, không cần token
+
+```
+GET https://pancake.vn/api/v1/pages/{page_id}/avatar/{psid}
+```
+
+Trả về `301 Moved Permanently` redirect tới URL avatar thực trên CDN Pancake (`https://content.pancake.vn/...`). Có thể dùng trực tiếp làm `src` của `<img>`:
+
+```html
+<img src="https://pancake.vn/api/v1/pages/256469571178082/avatar/1494977527279229"
+     alt="Customer avatar"
+     loading="lazy" />
+```
+
+**Ưu điểm:**
+- Không cần token → an toàn để dùng trên frontend public.
+- Browser tự follow redirect → đơn giản hoá code.
+- Pancake xử lý cache CDN → không tốn bandwidth/storage phía bạn.
+
+**Nhược điểm:**
+- Vẫn là dependency external → nếu Pancake down, avatar mất.
+- Không có URL CDN trực tiếp → mỗi lần render đều thêm 1 redirect.
+
+> [!TIP]
+> Với dashboard CRM nội bộ load nhiều avatar, có thể chạy job định kỳ tải về S3/CDN riêng để giảm phụ thuộc. Với app public hoặc tần suất render thấp, dùng trực tiếp endpoint Pancake là đủ.
+
+---
+
+## 8. Rate limit & best practice
+
+- **Rate limit**: 5 req/page/giây (chung cho toàn bộ Public API). Throttle 200-500ms giữa request là an toàn.
+- **Phone normalize trước khi PUT**: Pancake không tự strip `+84`, dấu cách, dấu gạch — clean về dạng `0xxxxxxxxx` trước khi gửi.
+- **Notes không có bulk insert**: nếu cần import lịch sử note từ CRM cũ, tự throttle 200ms/note.
+- **Retry exponential backoff cho 429 và 5xx**: 1s, 2s, 4s. 4xx khác fail luôn.
+- **`raw` JSONB**: lưu lại response gốc để debug schema drift khi Pancake update API trong tương lai.
+
+---
+
+## 9. Lỗi thường gặp
+
+| Mã | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| **400** | `note_id` sai khi PUT/DELETE note, hoặc `gender` không phải enum hợp lệ, hoặc `birthday` sai format | Validate input trước khi gửi; gender chỉ chấp nhận `male`/`female`/`unknown` |
+| **401 Unauthorized** | Token sai/hết hạn | Verify token, dùng `page_access_token` không phải user `access_token` |
+| **403 Forbidden** | Page chưa bật API, hoặc token không có quyền customer | Bật API trong dashboard, regenerate token |
+| **404 Not Found** | `page_customer_id` hoặc `note_id` không tồn tại | Verify ID từ response GET trước khi PUT/DELETE |
+| **`customers: []`** | Phạm vi `since`/`until` không có khách mới — hoặc page mới chưa có khách | Mở rộng `since`, hoặc check `total` field xem có khách nào không |
+| **429** | Vượt 5 req/page/s | Backoff, throttle, queue chung cho worker song song |
+| **Phone bị reject sau PUT** | Format không phải số hợp lệ | Strip ký tự đặc biệt, chuẩn hoá về `0xxxxxxxxx` |
+
+---
+
+## 10. FAQ
+
+**Q: Có thể tạo customer mới qua API không?**
+A: **Không.** Customer chỉ được tạo tự động khi khách nhắn tin vào inbox/comment lần đầu. API này chỉ cho **đọc và update** thông tin khách đã tồn tại.
+
+**Q: `psid` có thay đổi không?**
+A: **Không** — bất biến trong phạm vi 1 page. Đây là Facebook Platform guarantee.
+
+**Q: Sao cùng 1 khách nhắn vào 2 page của tôi lại có 2 record khác nhau?**
+A: Vì `psid` là **page-scoped**. Cùng user FB nhưng page khác → `psid` khác → trong DB là 2 record. Để gộp cross-page, dùng `phone_numbers` hoặc `name + birthday` làm khoá merge phía bạn (không có API gộp tự động).
+
+**Q: Có lấy được email khách qua API không?**
+A: **Có.** Pancake **tự động detect email** từ nội dung tin nhắn khách gửi (regex parse) và lưu vào field `emails` của customer object. Email **không phải nhập thủ công** trong dashboard — hoàn toàn phụ thuộc khách có gõ địa chỉ email trong chat hay không. Vì vậy: khách chỉ hỏi giá / để lại SĐT mà không gửi email → field `emails` sẽ rỗng. Tương tự, `phone_numbers` cũng được auto-detect từ message ngoài việc khách nhập số ở form.
+
+**Q: Có webhook event nào báo customer mới không?**
+A: **Không.** Cách duy nhất là polling `GET /page_customers` với `since=last_sync_at`. Khuyến nghị interval 1-6 giờ tuỳ volume.
+
+**Q: Notes có hỗ trợ image/file không?**
+A: Response có field `images[]` và `links[]` nhưng API POST/PUT **chỉ chấp nhận text** (`message`). Image/link chỉ tạo được từ web của Pancake.
+
+**Q: Sync vào Salesforce/HubSpot thì mapping field như nào?**
+A: Gợi ý mapping cơ bản:
+- `id` → External ID (custom field, unique key cho dedup)
+- `name` → First/Last Name (split bằng space cuối, không hoàn hảo nhưng đủ dùng)
+- `phone_numbers[0]` → Phone (chính), `phone_numbers[1+]` → Mobile/Alt Phone
+- `gender`, `birthday`, `lives_in` → custom field
+- `notes` → activity timeline hoặc note object (Salesforce có `Note` object riêng)
+
+**Q: Avatar endpoint có rate limit không?**
+A: Endpoint public không tính vào quota Page API. Nhưng nếu render hàng nghìn avatar/giây từ cùng IP, CDN Pancake có thể throttle phía họ — nên cache phía bạn nếu high-traffic.
+
+**Q: `notes[].created_at` là 13 chữ số, có phải bug không?**
+A: **Không phải bug — đúng là millisecond.** Pancake mix unit (query dùng second, response notes dùng millisecond). Xem [section 6.4](#64-pitfall-lớn--đơn-vị-thời-gian-trộn-lẫn).
+
+---
+
+## 11. Tổng kết
+
+- 4 endpoint chính: `GET /page_customers`, `PUT /page_customers/{id}`, `POST | PUT | DELETE /page_customers/{id}/notes`. Tất cả ở `public_api/v1`.
+- Pagination kiểu **offset** (`page_number` + `page_size` max 100) — khác với cursor của list conversations.
+- `psid` là khoá liên kết giữa customer, conversation, và avatar endpoint.
+- Update chỉ hỗ trợ 4 field: `name`, `phone_numbers`, `gender`, `birthday`. `phone_numbers` thay thế hoàn toàn — phải merge trước khi PUT.
+- Notes là CRM-lite text-only. **Mix đơn vị thời gian**: query (second) vs response notes timestamps (millisecond).
+- Avatar endpoint public, dùng trực tiếp làm `<img src>` — tiết kiệm storage.
+- Pattern sync: delta hàng giờ với `since=last_sync_at`, upsert theo `psid`, throttle dưới 5 req/s.
+
+---
+
+## Bài viết & công cụ liên quan
+
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api) — endpoint sister, dùng chung pattern delta sync.
+- [Hướng dẫn kết nối Webhook & API gửi tin nhắn trên Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan) — base về Page Access Token.
+- [Giới thiệu Pancake — Nền tảng quản lý chat đa kênh](/blog/gioi-thieu-pancake) — bài tổng quan.
+- [Công cụ lấy Page ID từ link Facebook](/tools/fb-info) — convert URL fanpage thành `page_id` để gọi API.
+- [Pancake Developer Docs](https://developer.pancake.biz/) — tài liệu chính thức (OpenAPI spec).
+
+---
+
+*Last updated: 2026-05-28. Phiên bản API: `public_api/v1` cho toàn bộ Page Customers endpoints. Avatar endpoint `pancake.vn/api/v1/...` không cần auth.*

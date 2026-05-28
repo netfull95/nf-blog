@@ -1,15 +1,15 @@
 {
-  "pancake": 3,
-  "quản-lý-bán-hàng": 1,
-  "social-commerce": 1,
-  "api": 2,
-  "page-access-token": 2,
+  "pancake": 4,
+  "api": 3,
+  "page-access-token": 3,
+  "page-customers": 1,
+  "crm": 2,
+  "pancake-developer": 3,
+  "facebook-messenger": 3,
+  "tích-hợp": 3,
+  "customer-sync": 1,
   "conversations": 1,
   "pagination": 1,
-  "pancake-developer": 2,
-  "facebook-messenger": 2,
-  "tích-hợp": 2,
-  "crm": 1,
   "webhook": 1,
   "tự-động-hoá": 1,
   "chatbot": 1,
@@ -18,5 +18,7 @@
   "đầu-tư-dài-hạn": 1,
   "chứng-khoán": 1,
   "bitcoin": 1,
-  "vàng": 1
+  "vàng": 1,
+  "quản-lý-bán-hàng": 1,
+  "social-commerce": 1
 }
