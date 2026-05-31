@@ -12,13 +12,13 @@
       "en": "get-pancake-conversations-list-api",
       "vi": "lay-danh-sach-hoi-thoai-pancake-api"
     },
-    "intro-pancake": {
-      "vi": "gioi-thieu-pancake",
-      "en": "introducing-pancake"
-    },
     "pancake-webhook-api": {
       "en": "pancake-webhook-and-api-send-message",
       "vi": "pancake-webhook-va-api-gui-tin-nhan"
+    },
+    "intro-pancake": {
+      "vi": "gioi-thieu-pancake",
+      "en": "introducing-pancake"
     }
   },
   "bySlug": {
@@ -26,11 +26,11 @@
     "3-ways-to-extract-pancake-data-into-your-crm": "pancake-extraction-options",
     "dong-bo-khach-hang-pancake-api-page-customers": "pancake-page-customers",
     "get-pancake-conversations-list-api": "pancake-list-conversations",
-    "gioi-thieu-pancake": "intro-pancake",
-    "introducing-pancake": "intro-pancake",
     "lay-danh-sach-hoi-thoai-pancake-api": "pancake-list-conversations",
     "pancake-page-customers-api-sync-to-crm": "pancake-page-customers",
     "pancake-webhook-and-api-send-message": "pancake-webhook-api",
-    "pancake-webhook-va-api-gui-tin-nhan": "pancake-webhook-api"
+    "pancake-webhook-va-api-gui-tin-nhan": "pancake-webhook-api",
+    "gioi-thieu-pancake": "intro-pancake",
+    "introducing-pancake": "intro-pancake"
   }
 }

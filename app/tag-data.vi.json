@@ -12,8 +12,6 @@
   "page-access-token": 3,
   "page-customers": 1,
   "facebook-messenger": 3,
-  "quản-lý-bán-hàng": 1,
-  "social-commerce": 1,
   "conversations": 1,
   "pagination": 1,
   "webhook": 1,
@@ -24,5 +22,7 @@
   "đầu-tư-dài-hạn": 1,
   "chứng-khoán": 1,
   "bitcoin": 1,
-  "vàng": 1
+  "vàng": 1,
+  "quản-lý-bán-hàng": 1,
+  "social-commerce": 1
 }

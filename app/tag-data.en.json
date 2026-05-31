@@ -12,10 +12,10 @@
   "conversations": 1,
   "pagination": 1,
   "facebook-messenger": 3,
-  "sales-management": 1,
-  "social-commerce": 1,
   "page-customers": 1,
   "webhook": 1,
   "automation": 1,
-  "chatbot": 1
+  "chatbot": 1,
+  "sales-management": 1,
+  "social-commerce": 1
 }
