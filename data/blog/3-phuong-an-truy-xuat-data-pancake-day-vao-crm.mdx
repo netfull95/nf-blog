@@ -1,0 +1,432 @@
+---
+title: "3 phương án truy xuất data Pancake để đẩy vào CRM — Cẩm nang cho kĩ thuật viên"
+date: "2026-06-01"
+lastmod: "2026-06-01"
+language: "vi"
+translationKey: "pancake-extraction-options"
+summary: "So sánh 3 phương án thực dụng để truy xuất data khách hàng và hội thoại từ Pancake API rồi đẩy vào CRM của bạn — Postman (manual), Make.com / n8n (no-code automation), và self-hosted Node.js cron (full code). Mỗi phương án có bước setup cụ thể, chi phí, latency, và pitfall đi kèm để kĩ thuật viên chọn đúng theo nhu cầu."
+tags: ["Pancake", "API", "CRM", "Integration", "Pancake developer", "Tích hợp", "Postman", "Make.com", "n8n", "Customer Sync"]
+---
+
+# 3 phương án truy xuất data Pancake để đẩy vào CRM — Cẩm nang cho kĩ thuật viên
+
+> **TL;DR:** Có 3 phương án thực dụng để truy xuất data từ Pancake và đẩy vào CRM nội bộ: **(1) Postman** chạy tay — phù hợp báo cáo tuần/tháng, 30 phút setup, không cần code; **(2) Make.com / n8n** — no-code automation, sync 5-15 phút/lần, tốn 0-500K/tháng; **(3) Self-hosted Node.js cron** — full code, latency 5 phút đến realtime, cần dev maintain. Bài này hướng dẫn kĩ thuật viên chọn đúng phương án theo volume + latency + ngân sách, kèm setup chi tiết cho từng cái.
+
+Pancake có dashboard quản lý chat đa kênh tốt, nhưng đa số shop sau khi dùng một thời gian đều cần **đẩy data sang CRM riêng** — HubSpot, Salesforce, hoặc CRM internal — để sales/marketing/kế toán làm việc trên 1 hệ thống duy nhất. Bài này dành cho **kĩ thuật viên / IT support tại shop** đang được giao nhiệm vụ đó.
+
+Mình không bám CRM cụ thể nào — các API call CRM trong bài viết dưới dạng generic, bạn thay endpoint và auth header của CRM bạn dùng là chạy được.
+
+Nếu chưa quen với Pancake API, đọc trước [bài giới thiệu](/blog/gioi-thieu-pancake) và 3 bài về API ([webhook + reply](/blog/pancake-webhook-va-api-gui-tin-nhan), [list conversations](/blog/lay-danh-sach-hoi-thoai-pancake-api), [Page Customers](/blog/dong-bo-khach-hang-pancake-api-page-customers)).
+
+---
+
+## 1. So sánh nhanh 3 phương án
+
+| # | Phương án | Effort setup | Cần code? | Chi phí/tháng | Latency | Phù hợp khi |
+|---|---|---|---|---|---|---|
+| 1 | **Postman** chạy tay | 30 phút | Không | 0đ | Manual | Báo cáo tuần/tháng, < 1000 records |
+| 2 | **Make.com / n8n** | 1-2 giờ | Không | 0-500K | 5-15 phút | Sync định kỳ vào CRM SaaS có connector |
+| 3 | **Self-hosted Node.js cron** | 4-8 giờ | Có | Server + DB (~100K) | 5 phút – realtime | Tích hợp sâu vào CRM internal, volume lớn |
+
+Bảng quyết định nhanh nằm ở [section 5](#5-quyết-định-nhanh--chọn-phương-án-nào).
+
+---
+
+## 2. Chuẩn bị chung — Page Access Token
+
+Cả 3 phương án đều cần `page_access_token`. Cách lấy:
+
+1. Vào dashboard Pancake → chọn page muốn lấy data
+2. **Cài đặt → Công cụ → Pancake API**
+3. Bấm **Tạo token mới** → đặt tên (vd: "Sync to CRM")
+4. Copy token vào file note an toàn (1Password, Bitwarden, hoặc file `.env` nếu dùng code)
+
+Chi tiết + sự khác biệt User Token vs Page Token: xem [bài Webhook & API gửi tin nhắn — section 1](/blog/pancake-webhook-va-api-gui-tin-nhan#1-chuẩn-bị-lấy-page-access-token).
+
+> [!IMPORTANT]
+> Token này cho phép đọc **toàn bộ** khách hàng + chat của page — bao gồm phone, email, nội dung tin nhắn. **TUYỆT ĐỐI KHÔNG**:
+> - Paste vào group chat / Slack / Telegram
+> - Commit vào git
+> - Để trong code FE (browser sẽ thấy)
+> - Share qua email không mã hoá
+>
+> Nếu lỡ leak: vào dashboard regenerate token mới, token cũ sẽ bị disable.
+
+---
+
+## 3. Phương án 1 — Postman chạy tay
+
+**Phù hợp khi:** kế toán cần list khách 30 ngày qua để đối soát, marketing cần list email tháng để chạy EDM, hoặc bạn cần test integration trước khi build pipeline tự động.
+
+### 3.1. Setup Postman (15 phút)
+
+1. Tải **Postman Desktop** miễn phí: `postman.com/downloads`
+2. Tạo workspace mới, đặt tên "Pancake API"
+3. Tạo **Environment** với 3 biến:
+
+| Variable | Initial Value |
+|---|---|
+| `BASE_URL` | `https://pages.fm/api/public_api/v1` |
+| `PAGE_ID` | (page id của bạn) |
+| `TOKEN` | (page access token vừa lấy) |
+
+> [!TIP]
+> Đặt `TOKEN` ở mode **Secret** trong Postman — sẽ ẩn giá trị trong UI, không bị share khi export collection.
+
+### 3.2. 3 request mẫu cốt lõi
+
+**Request 1 — List 100 khách mới trong 30 ngày qua** (GET):
+
+```
+{{BASE_URL}}/pages/{{PAGE_ID}}/page_customers
+  ?page_access_token={{TOKEN}}
+  &since=1748390400
+  &until=1750982400
+  &page_number=1
+  &page_size=100
+  &order_by=inserted_at
+```
+
+`since` và `until` là Unix timestamp giây — dùng tool như `epochconverter.com` để convert ngày sang timestamp.
+
+**Request 2 — List 60 hội thoại mới nhất** (GET):
+
+```
+https://pages.fm/api/public_api/v2/pages/{{PAGE_ID}}/conversations
+  ?page_access_token={{TOKEN}}
+```
+
+(Lưu ý endpoint conversations ở `v2`, customers ở `v1` — xem warning ở [bài list conversations](/blog/lay-danh-sach-hoi-thoai-pancake-api#3-endpoint-cơ-bản))
+
+**Request 3 — Lấy messages của 1 hội thoại** (GET):
+
+```
+{{BASE_URL}}/pages/{{PAGE_ID}}/conversations/{{CONV_ID}}/messages
+  ?page_access_token={{TOKEN}}
+```
+
+### 3.3. Export response → đẩy vào CRM thủ công
+
+Sau khi chạy request:
+
+1. Postman hiển thị response JSON
+2. Bấm **Save Response → Save to file** → lưu file `.json`
+3. Convert JSON sang CSV bằng tool online (vd: `jsontocsv.org`) hoặc dùng `jq` nếu có Mac/Linux
+4. Mở CSV trong Excel → mapping cột Pancake sang format CRM yêu cầu → import vào CRM qua tính năng "Import contacts"
+
+### 3.4. Khi nào nâng cấp lên phương án khác?
+
+- Phải chạy tay > 1 lần/tuần → nâng lên **Make.com** (phương án 2)
+- Volume > 1000 records mỗi lần → Postman chậm, nâng lên **Node.js script** (phương án 3)
+- Cần đẩy realtime mới có khách là sync ngay → **phương án 3 + webhook**
+
+---
+
+## 4. Phương án 2 — Make.com / n8n (no-code automation)
+
+**Phù hợp khi:** sync định kỳ 5-30 phút/lần vào CRM SaaS phổ biến, không có hạ tầng tự build.
+
+### 4.1. So sánh Make.com vs n8n
+
+| | Make.com | n8n |
+|---|---|---|
+| **Hosting** | SaaS (cloud Make) | Self-host hoặc cloud trả phí |
+| **Free tier** | 1000 ops/tháng | Self-host: unlimited; cloud: 5K/tháng |
+| **Connector CRM** | Sẵn HubSpot, Salesforce, Pipedrive, Zoho | Như Make + flexible HTTP cho CRM custom |
+| **Học** | UI thân thiện nhất, drag-drop | Học hơi cao hơn nhưng power user thích |
+| **Khi nào chọn** | Shop có CRM SaaS phổ biến, IT không quen self-host | CRM internal có API riêng, IT có server Linux |
+
+Mình ví dụ với **Make.com** vì miễn phí, dễ học. n8n flow tương tự, chỉ khác cách kéo node.
+
+### 4.2. Scenario mẫu — sync customer mới mỗi 15 phút
+
+**Trigger**: Schedule → mỗi 15 phút
+
+**Module 1 — HTTP "Make a request"** (gọi Pancake API):
+
+- Method: `GET`
+- URL: `https://pages.fm/api/public_api/v1/pages/{PAGE_ID}/page_customers`
+- Query parameters:
+  - `page_access_token`: (token lưu trong Make Variables)
+  - `since`: lấy từ **Data Store** module (xem dưới)
+  - `until`: `{{timestamp}}` (current Unix time)
+  - `page_number`: `1`
+  - `page_size`: `100`
+- Parse response: ✓ JSON
+
+**Module 2 — Iterator**: lặp qua `customers[]` từ response
+
+**Module 3 — HTTP "Make a request"** (đẩy vào CRM của bạn):
+
+- Method: `POST` (hoặc `PUT` nếu CRM hỗ trợ upsert)
+- URL: `https://your-crm.com/api/contacts` *(đổi thành endpoint CRM của bạn)*
+- Headers: `Authorization: Bearer YOUR_CRM_TOKEN`, `Content-Type: application/json`
+- Body (JSON, mapping field):
+
+```json
+{
+  "external_id": "{{1.psid}}",
+  "name": "{{1.name}}",
+  "phone": "{{1.phone_numbers[1]}}",
+  "email": "{{1.emails[1]}}",
+  "gender": "{{1.gender}}",
+  "source": "pancake",
+  "created_at": "{{1.inserted_at}}"
+}
+```
+
+> [!TIP]
+> Dùng `external_id = psid` làm khoá dedupe trong CRM. Nếu CRM của bạn không có field external_id, dùng `phone` hoặc tạo custom field `pancake_psid`.
+
+**Module 4 — Data Store**: lưu `last_run_timestamp` để lần sau dùng làm `since`
+
+### 4.3. Tính cost Make.com
+
+Make tính **1 operation = 1 module call**. Scenario trên với 100 customer/lần:
+
+```
+1 (Pancake API) + 100 (iterator) × 1 (CRM POST) + 1 (Data Store) = 102 ops/run
+102 ops × 4 run/giờ × 24 giờ × 30 ngày ≈ 294K ops/tháng
+```
+
+Vượt free tier 1000 ops nhiều — cần plan Core $9/tháng cho 10K ops, hoặc Pro $16/tháng cho 50K ops.
+
+**Tip giảm cost**:
+- Chạy 30 phút/lần thay vì 15 phút → giảm 50% ops
+- Filter ở Pancake API (chỉ lấy khách có `phone_numbers` chẳng hạn) → giảm số lần loop
+- Batch insert CRM nếu CRM hỗ trợ — 1 request 100 record thay vì 100 request
+
+### 4.4. Pitfall thực tế
+
+- **Rate limit Pancake 5 req/page/giây**: Make.com loop nhanh có thể ăn 429. Thêm module **Sleep** 200ms giữa các iteration nếu sync > 200 record/lần.
+- **Phone format mismatch**: CRM thường yêu cầu E.164 (`+84901234567`), Pancake trả `0901234567`. Thêm module **Tools → Set variable** để normalize trước khi POST.
+- **Make logs**: vào History tab xem từng run, debug khi fail. Set **Error handler** để retry khi 5xx.
+
+---
+
+## 5. Phương án 3 — Self-hosted Node.js cron
+
+**Phù hợp khi:** CRM internal không có connector Make/n8n, volume > 10K record, cần realtime dưới 5 phút, hoặc muốn full control (logging, retry custom, schema custom).
+
+### 5.1. Tech stack tối giản
+
+- **Runtime**: Node.js 20+ (hoặc Bun)
+- **DB local (optional)**: Postgres (Neon free tier) — cache + dedup
+- **Scheduler**: Vercel Cron (miễn phí 1 run/giờ), GitHub Actions cron, hoặc systemd timer trên VPS
+- **Secret**: env vars (Vercel/Railway/`.env`)
+
+Tổng cost: 0đ nếu chấp nhận Vercel cron 1h/lần; ~100K/tháng nếu cần cron 5 phút (Vercel Pro) hoặc VPS riêng (DigitalOcean $5).
+
+### 5.2. Code mẫu — sync customers mỗi giờ
+
+File `api/cron/sync-pancake-customers.js`:
+
+```javascript
+import { Client } from 'pg'
+
+const PANCAKE_BASE = 'https://pages.fm/api/public_api/v1'
+const PAGE_ID = process.env.PANCAKE_PAGE_ID
+const TOKEN = process.env.PANCAKE_PAGE_ACCESS_TOKEN
+const CRM_ENDPOINT = process.env.CRM_API_ENDPOINT      // vd: https://your-crm.com/api/contacts
+const CRM_TOKEN = process.env.CRM_API_TOKEN
+
+export default async function handler(req, res) {
+  // 1. Auth — chỉ Vercel cron mới gọi được
+  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const db = new Client({ connectionString: process.env.DATABASE_URL })
+  await db.connect()
+
+  // 2. Lấy mốc sync gần nhất từ DB
+  const { rows } = await db.query(
+    `SELECT EXTRACT(EPOCH FROM last_sync_at)::bigint AS since FROM sync_state WHERE resource = 'customers'`
+  )
+  const since = rows[0]?.since || Math.floor(Date.now() / 1000) - 86400 * 7  // default 7 ngày trước
+  const until = Math.floor(Date.now() / 1000)
+
+  let pageNumber = 1
+  let synced = 0
+
+  // 3. Loop pagination
+  while (true) {
+    const params = new URLSearchParams({
+      page_access_token: TOKEN,
+      since: String(since),
+      until: String(until),
+      page_number: String(pageNumber),
+      page_size: '100',
+      // 'updated_at' bắt được CẢ khách mới VÀ khách cũ có thông tin vừa thay đổi.
+      // Đổi sang 'inserted_at' nếu chỉ muốn lấy khách mới tạo (xem IMPORTANT block ở dưới).
+      order_by: 'updated_at',
+    })
+
+    const r = await fetch(`${PANCAKE_BASE}/pages/${PAGE_ID}/page_customers?${params}`)
+    if (!r.ok) throw new Error(`Pancake ${r.status}`)
+    const { customers = [] } = await r.json()
+    if (customers.length === 0) break
+
+    // 4. Đẩy từng customer sang CRM (idempotent — CRM tự dedupe theo external_id)
+    for (const c of customers) {
+      await pushToCRM(c)
+      synced++
+    }
+
+    pageNumber++
+    await new Promise(r => setTimeout(r, 300))   // throttle dưới 5 req/s
+  }
+
+  // 5. Update mốc sync
+  await db.query(
+    `INSERT INTO sync_state (resource, last_sync_at) VALUES ('customers', to_timestamp($1))
+     ON CONFLICT (resource) DO UPDATE SET last_sync_at = to_timestamp($1)`,
+    [until]
+  )
+  await db.end()
+
+  res.json({ synced, since, until })
+}
+
+async function pushToCRM(customer) {
+  const body = {
+    external_id: customer.psid,
+    name: customer.name,
+    phone: customer.phone_numbers?.[0] || null,
+    email: customer.emails?.[0] || null,
+    gender: customer.gender,
+    source: 'pancake',
+    created_at: customer.inserted_at,
+  }
+
+  const r = await fetch(CRM_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${CRM_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!r.ok) {
+    console.error(`CRM push failed for ${customer.psid}:`, await r.text())
+    // Tuỳ chọn: lưu vào dead-letter queue để retry sau, hoặc gửi alert
+  }
+}
+```
+
+Schema Postgres tối thiểu cần có:
+
+```sql
+CREATE TABLE sync_state (
+  resource TEXT PRIMARY KEY,
+  last_sync_at TIMESTAMPTZ NOT NULL
+);
+```
+
+> [!IMPORTANT]
+> **`order_by=updated_at` (mặc định trong code mẫu) vs `order_by=inserted_at` — khác gì?**
+>
+> - **`updated_at`** (recommended cho hầu hết case): bắt **cả khách mới được tạo** và **khách cũ có data vừa thay đổi** (đổi số điện thoại, bổ sung email, đổi tên...). CRM sẽ nhận tất cả thay đổi và tự upsert theo `external_id = psid`. Trade-off: trả về nhiều record hơn ~2-3 lần (mỗi reply chat cũng có thể bump `updated_at` của khách) → tốn API call nhiều hơn.
+>
+> - **`inserted_at`**: chỉ bắt **khách mới được tạo** trong khoảng `since/until`. Nhẹ hơn, tốn ít API call, nhưng **bỏ sót** mọi update thông tin sau khi khách đã tồn tại trong CRM.
+>
+> **Pattern khuyến nghị cho production có volume lớn (>5K khách)**: chạy 2 cron song song với 2 dòng `sync_state` riêng (`customers_new` và `customers_updates`):
+> - Cron 1h dùng `inserted_at` → bắt khách mới (rẻ, ít record)
+> - Cron 15 phút dùng `updated_at` với `since` ngắn (vd: 30 phút gần nhất) → bắt update nóng
+>
+> Volume nhỏ (dưới 5K khách): chỉ cần 1 cron với `updated_at` như code mẫu là đủ.
+
+### 5.3. Deploy lên Vercel
+
+1. Push code lên GitHub repo
+2. Import vào Vercel, set env vars: `PANCAKE_PAGE_ID`, `PANCAKE_PAGE_ACCESS_TOKEN`, `CRM_API_ENDPOINT`, `CRM_API_TOKEN`, `DATABASE_URL`, `CRON_SECRET`
+3. Tạo file `vercel.json`:
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/sync-pancake-customers", "schedule": "0 * * * *" }
+  ]
+}
+```
+
+4. Deploy → Vercel sẽ tự chạy cron mỗi giờ
+
+> [!TIP]
+> **Khi cần realtime** (latency dưới 1 phút): thêm webhook receiver `/api/pancake/webhook` để Pancake push event mới ngay khi có. Cron 1h/lần lúc này đóng vai trò **reconcile** — fix các event bị miss khi webhook fail. Xem [bài webhook setup](/blog/pancake-webhook-va-api-gui-tin-nhan).
+
+### 5.4. Logging & alerting cần có
+
+- Log mỗi run: timestamp, số record synced, error count
+- Alert khi: 3 run liên tiếp fail, hoặc lag (`now() - last_sync_at`) > 2 giờ
+- Tool: Vercel logs + email alert; hoặc tích hợp Sentry cho error tracking
+
+---
+
+## 6. Quyết định nhanh — chọn phương án nào?
+
+```
+Bạn cần lấy data Pancake đẩy vào CRM?
+│
+├─ Chỉ cần thỉnh thoảng (báo cáo tuần/tháng)
+│   → Phương án 1: Postman
+│
+├─ Cần tự động, CRM có connector Make/n8n
+│   → Phương án 2: Make.com / n8n
+│
+└─ Cần tự động, CRM internal hoặc volume lớn
+    → Phương án 3: Node.js cron
+    ├─ Latency 1h OK → Vercel cron miễn phí
+    └─ Cần realtime dưới 5 phút → Cron + Webhook receiver
+```
+
+---
+
+## 7. Pitfalls chung cho mọi phương án
+
+- **Rate limit 5 req/page/giây** — đếm theo page, không phải theo IP. Vượt là HTTP 429.
+- **PII security**: phone + email là sensitive data. Mã hoá at-rest (Postgres pgcrypto), có quy trình xoá khi khách yêu cầu (GDPR/PDPA).
+- **Token rotation**: Page Access Token không hết hạn nhưng có thể bị disable/regenerate khi staff Pancake nghỉ việc. Setup alert khi script bắt đầu trả 401.
+- **Multi-page**: mỗi page cần token riêng. Lưu trong secret manager, KHÔNG hardcode trong file. Loop qua từng page với delay giữa các page.
+- **Idempotency**: dùng `psid` (customer) hoặc conversation `id` làm dedupe key ở CRM. Tránh insert trùng khi cron rerun.
+- **Phone normalize**: clean về format E.164 (`+84xxx`) trước khi push CRM. Pancake trả `0xxx` raw.
+
+---
+
+## 8. FAQ
+
+**Q: Tôi không có dev, làm được phương án nào?**
+A: Phương án 1 (Postman) và 2 (Make.com với CRM có sẵn connector) — không cần biết code. Apps Script trên Google Sheets là phương án thứ 4 không cover trong bài này, nếu CRM của bạn là Google Workspace thì cân nhắc thêm.
+
+**Q: CRM tôi không có API public thì sao?**
+A: Hai lựa chọn: (a) export ra CSV bằng phương án 1 rồi import tay vào CRM, (b) làm trung gian qua Google Sheets (Pancake → Sheets via Apps Script → import sheets vào CRM).
+
+**Q: Phương án nào latency thấp nhất?**
+A: Phương án 3 + webhook receiver — gần realtime (dưới 5 giây). Cron polling đơn thuần tối thiểu 5 phút (Vercel Pro) hoặc 1 giờ (Vercel free).
+
+**Q: Pancake có official integration với HubSpot/Salesforce sẵn không?**
+A: **Không.** Tính đến hiện tại Pancake chưa có connector chính thức với HubSpot hoặc Salesforce — phải tự build bằng 1 trong 3 phương án trong bài. Phương án 2 (Make.com / n8n) là nhanh nhất vì cả 2 CRM này đều có connector sẵn ở Make/n8n, không phải code.
+
+**Q: Chi phí thấp nhất cho sync tự động?**
+A: Make.com free tier (1000 ops/tháng) đủ cho shop nhỏ < 30 customer/ngày. Hoặc self-host n8n trên VPS $5/tháng cho unlimited ops. Hoặc Vercel Cron free tier cho phương án 3 chấp nhận 1h latency.
+
+**Q: Có cần lưu data Pancake vào DB nội bộ trước khi đẩy CRM không?**
+A: Không bắt buộc. Phương án 2 (Make.com) đẩy thẳng. Phương án 3 mình mặc định có DB để track `last_sync_at`, nhưng có thể bỏ DB nếu chấp nhận lưu state ở file hoặc env var.
+
+**Q: Nên outsource cho ai làm phương án 3?**
+A: Có thể **liên hệ trực tiếp Pancake support kĩ thuật** để được tư vấn chi tiết — team Pancake nắm rõ best practice và edge case của API họ hơn bất kỳ dev ngoài nào.
+
+---
+
+## 9. Bài viết liên quan
+
+- [Giới thiệu Pancake — Nền tảng quản lý chat đa kênh](/blog/gioi-thieu-pancake) — overview cho người mới
+- [Hướng dẫn kết nối Webhook & API gửi tin nhắn trên Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan) — base về Page Access Token + webhook
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api) — endpoint conversations chi tiết (pagination cursor)
+- [Page Customers API Pancake — Đồng bộ khách hàng vào CRM](/blog/dong-bo-khach-hang-pancake-api-page-customers) — endpoint customers chi tiết (pagination offset)
+- [Pancake Developer Docs](https://developer.pancake.biz/) — tài liệu chính thức
+
+---
+
+*Last updated: 2026-06-01. Phương án sẽ được cập nhật khi Pancake ra connector mới hoặc thay đổi rate limit.*

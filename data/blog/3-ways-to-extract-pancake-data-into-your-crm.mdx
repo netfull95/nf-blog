@@ -1,0 +1,433 @@
+---
+title: "3 Ways to Extract Pancake Data into Your CRM — A Technician's Handbook"
+date: "2026-06-01"
+lastmod: "2026-06-01"
+language: "en"
+translationKey: "pancake-extraction-options"
+summary: "Compare 3 practical ways to extract customer and conversation data from the Pancake API and push it into your CRM — Postman (manual), Make.com / n8n (no-code automation), and a self-hosted Node.js cron (full code). Each option comes with concrete setup steps, costs, latency, and pitfalls so technicians can pick the right one for their needs."
+tags: ["Pancake", "API", "CRM", "Integration", "Pancake developer", "Postman", "Make.com", "n8n", "Customer Sync"]
+---
+
+# 3 Ways to Extract Pancake Data into Your CRM — A Technician's Handbook
+
+> **TL;DR:** Three practical options for extracting data from Pancake and pushing it into an internal CRM: **(1) Postman** run manually — fits weekly/monthly reports, 30 minutes to set up, no code; **(2) Make.com / n8n** — no-code automation, syncs every 5-15 minutes, $0-20/month; **(3) Self-hosted Node.js cron** — full code, latency from 5 minutes to realtime, requires a developer to maintain. This guide helps technicians pick the right option based on volume + latency + budget, with detailed setup for each.
+
+Pancake has a solid multi-channel chat dashboard, but most shops eventually need to **push data into a dedicated CRM** — HubSpot, Salesforce, or an internal CRM — so sales/marketing/accounting can work from a single system. This article is for the **technician / IT support staff at a shop** who has been handed that task.
+
+I'm not tied to any specific CRM here — the CRM API calls below are generic; you swap in your CRM's endpoint and auth header and it runs.
+
+If you're new to the Pancake API, read the [introduction](/en/blog/introducing-pancake) and the 3 API posts first ([webhook + reply](/en/blog/pancake-webhook-and-api-send-message), [list conversations](/en/blog/get-pancake-conversations-list-api), [Page Customers](/en/blog/pancake-page-customers-api-sync-to-crm)).
+
+---
+
+## 1. Quick comparison of the 3 options
+
+| # | Option | Setup effort | Code required? | Cost/month | Latency | Best when |
+|---|---|---|---|---|---|---|
+| 1 | **Postman** run manually | 30 minutes | No | $0 | Manual | Weekly/monthly reports, < 1000 records |
+| 2 | **Make.com / n8n** | 1-2 hours | No | $0-20 | 5-15 minutes | Periodic sync into a SaaS CRM with a connector |
+| 3 | **Self-hosted Node.js cron** | 4-8 hours | Yes | Server + DB (~$5) | 5 minutes – realtime | Deep integration with an internal CRM, large volume |
+
+A quick decision tree is in [section 6](#6-quick-decision--which-option-to-pick).
+
+---
+
+## 2. Shared prep — Page Access Token
+
+All three options need a `page_access_token`. How to get one:
+
+1. Open the Pancake dashboard → select the page you want to pull data from
+2. **Settings → Tools → Pancake API**
+3. Click **Create new token** → name it (e.g. "Sync to CRM")
+4. Copy the token into a secure note (1Password, Bitwarden, or a `.env` file if you'll use code)
+
+Full details + the User Token vs Page Token distinction: see [the Webhook & API guide — section 1](/en/blog/pancake-webhook-and-api-send-message#1-prepare-the-page-access-token).
+
+> [!IMPORTANT]
+> This token grants full read access to the page's customers and chats — including phone numbers, emails, and message contents. **ABSOLUTELY DO NOT**:
+> - Paste it into group chats / Slack / Telegram
+> - Commit it to git
+> - Embed it in frontend code (the browser will see it)
+> - Send it via unencrypted email
+>
+> If it leaks: regenerate a new token in the dashboard; the old one is automatically disabled.
+
+---
+
+## 3. Option 1 — Postman run manually
+
+**Use when:** accounting needs a list of customers from the past 30 days for reconciliation, marketing needs an email list for the month's EDM, or you want to test the integration before building an automated pipeline.
+
+### 3.1. Set up Postman (15 minutes)
+
+1. Download **Postman Desktop** (free): `postman.com/downloads`
+2. Create a new workspace, name it "Pancake API"
+3. Create an **Environment** with 3 variables:
+
+| Variable | Initial Value |
+|---|---|
+| `BASE_URL` | `https://pages.fm/api/public_api/v1` |
+| `PAGE_ID` | (your page ID) |
+| `TOKEN` | (the page access token you just generated) |
+
+> [!TIP]
+> Set `TOKEN` to **Secret** mode in Postman — it hides the value in the UI and won't get shared when you export the collection.
+
+### 3.2. Three core sample requests
+
+**Request 1 — List 100 customers created in the last 30 days** (GET):
+
+```
+{{BASE_URL}}/pages/{{PAGE_ID}}/page_customers
+  ?page_access_token={{TOKEN}}
+  &since=1748390400
+  &until=1750982400
+  &page_number=1
+  &page_size=100
+  &order_by=inserted_at
+```
+
+`since` and `until` are Unix timestamps in **seconds** — use a tool like `epochconverter.com` to convert dates.
+
+**Request 2 — List the 60 most recent conversations** (GET):
+
+```
+https://pages.fm/api/public_api/v2/pages/{{PAGE_ID}}/conversations
+  ?page_access_token={{TOKEN}}
+```
+
+(Note: the conversations endpoint is on `v2`, customers on `v1` — see the warning in the [list conversations post](/en/blog/get-pancake-conversations-list-api#3-basic-endpoint))
+
+**Request 3 — Get messages from one conversation** (GET):
+
+```
+{{BASE_URL}}/pages/{{PAGE_ID}}/conversations/{{CONV_ID}}/messages
+  ?page_access_token={{TOKEN}}
+```
+
+### 3.3. Export the response → push to your CRM manually
+
+After running a request:
+
+1. Postman displays the JSON response
+2. Click **Save Response → Save to file** → save as `.json`
+3. Convert JSON to CSV using an online tool (e.g. `jsontocsv.org`) or `jq` if you're on macOS/Linux
+4. Open the CSV in Excel → map Pancake columns to the format your CRM expects → import into the CRM via its "Import contacts" feature
+
+### 3.4. When to upgrade to another option
+
+- Running this manually more than once a week → upgrade to **Make.com** (option 2)
+- Volume > 1000 records per run → Postman gets slow, move to **Node.js script** (option 3)
+- You need new customers to sync immediately upon creation → **option 3 + webhook**
+
+---
+
+## 4. Option 2 — Make.com / n8n (no-code automation)
+
+**Use when:** periodic sync every 5-30 minutes into a popular SaaS CRM, no infrastructure to self-build.
+
+### 4.1. Make.com vs n8n
+
+| | Make.com | n8n |
+|---|---|---|
+| **Hosting** | SaaS (cloud Make) | Self-host or paid cloud |
+| **Free tier** | 1000 ops/month | Self-host: unlimited; cloud: 5K/month |
+| **CRM connectors** | Built-in HubSpot, Salesforce, Pipedrive, Zoho | Same as Make + flexible HTTP for custom CRMs |
+| **Learning curve** | Friendliest UI, drag-drop | Slightly steeper but power-user favorite |
+| **When to pick** | Shop with a popular SaaS CRM, IT not comfortable self-hosting | Internal CRM with its own API, IT has a Linux server |
+
+I'll use **Make.com** as the example because it's free and easy to learn. The n8n flow is similar — just different node-drag mechanics.
+
+### 4.2. Sample scenario — sync new customers every 15 minutes
+
+**Trigger**: Schedule → every 15 minutes
+
+**Module 1 — HTTP "Make a request"** (call Pancake API):
+
+- Method: `GET`
+- URL: `https://pages.fm/api/public_api/v1/pages/{PAGE_ID}/page_customers`
+- Query parameters:
+  - `page_access_token`: (token stored in Make Variables)
+  - `since`: pulled from the **Data Store** module (see below)
+  - `until`: `{{timestamp}}` (current Unix time)
+  - `page_number`: `1`
+  - `page_size`: `100`
+- Parse response: ✓ JSON
+
+**Module 2 — Iterator**: loop over `customers[]` from the response
+
+**Module 3 — HTTP "Make a request"** (push to your CRM):
+
+- Method: `POST` (or `PUT` if your CRM supports upsert)
+- URL: `https://your-crm.com/api/contacts` *(replace with your CRM's endpoint)*
+- Headers: `Authorization: Bearer YOUR_CRM_TOKEN`, `Content-Type: application/json`
+- Body (JSON, field mapping):
+
+```json
+{
+  "external_id": "{{1.psid}}",
+  "name": "{{1.name}}",
+  "phone": "{{1.phone_numbers[1]}}",
+  "email": "{{1.emails[1]}}",
+  "gender": "{{1.gender}}",
+  "source": "pancake",
+  "created_at": "{{1.inserted_at}}"
+}
+```
+
+> [!TIP]
+> Use `external_id = psid` as the dedup key in your CRM. If your CRM has no `external_id` field, use `phone` or create a custom field `pancake_psid`.
+
+**Module 4 — Data Store**: persist `last_run_timestamp` to use as `since` on the next run
+
+### 4.3. Estimating Make.com cost
+
+Make charges **1 operation per module call**. For the scenario above with 100 customers/run:
+
+```
+1 (Pancake API) + 100 (iterator) × 1 (CRM POST) + 1 (Data Store) = 102 ops/run
+102 ops × 4 runs/hour × 24 hours × 30 days ≈ 294K ops/month
+```
+
+Way over the free 1000-ops tier — you'll need the Core plan ($9/month for 10K ops) or Pro ($16/month for 50K ops).
+
+**Cost-reduction tips**:
+- Run every 30 minutes instead of 15 → 50% fewer ops
+- Filter at the Pancake API (e.g. only customers with `phone_numbers`) → fewer iterator passes
+- Use bulk-insert on the CRM side if supported — one request for 100 records instead of 100 requests
+
+### 4.4. Practical pitfalls
+
+- **Pancake rate limit of 5 req/page/second**: Make.com loops fast and can trigger 429. Add a **Sleep** module of 200ms between iterations when syncing > 200 records/run.
+- **Phone format mismatch**: CRMs typically expect E.164 (`+84901234567`); Pancake returns `0901234567`. Add a **Tools → Set variable** module to normalize before the POST.
+- **Make logs**: open the History tab to inspect each run and debug failures. Configure an **Error handler** for 5xx retry.
+
+---
+
+## 5. Option 3 — Self-hosted Node.js cron
+
+**Use when:** your internal CRM has no Make/n8n connector, volume > 10K records, you need latency under 5 minutes, or you want full control (logging, custom retry, custom schema).
+
+### 5.1. Minimal tech stack
+
+- **Runtime**: Node.js 20+ (or Bun)
+- **Local DB (optional)**: Postgres (Neon free tier) — for caching + dedup
+- **Scheduler**: Vercel Cron (free 1 run/hour), GitHub Actions cron, or a systemd timer on a VPS
+- **Secrets**: env vars (Vercel/Railway/`.env`)
+
+Total cost: $0 if 1-hour Vercel cron is acceptable; ~$5/month for 5-minute cron (Vercel Pro) or a dedicated VPS (DigitalOcean $5).
+
+### 5.2. Sample code — sync customers every hour
+
+File `api/cron/sync-pancake-customers.js`:
+
+```javascript
+import { Client } from 'pg'
+
+const PANCAKE_BASE = 'https://pages.fm/api/public_api/v1'
+const PAGE_ID = process.env.PANCAKE_PAGE_ID
+const TOKEN = process.env.PANCAKE_PAGE_ACCESS_TOKEN
+const CRM_ENDPOINT = process.env.CRM_API_ENDPOINT      // e.g. https://your-crm.com/api/contacts
+const CRM_TOKEN = process.env.CRM_API_TOKEN
+
+export default async function handler(req, res) {
+  // 1. Auth — only Vercel cron can hit this
+  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const db = new Client({ connectionString: process.env.DATABASE_URL })
+  await db.connect()
+
+  // 2. Read the most recent sync cursor from DB
+  const { rows } = await db.query(
+    `SELECT EXTRACT(EPOCH FROM last_sync_at)::bigint AS since FROM sync_state WHERE resource = 'customers'`
+  )
+  const since = rows[0]?.since || Math.floor(Date.now() / 1000) - 86400 * 7  // default to 7 days back
+  const until = Math.floor(Date.now() / 1000)
+
+  let pageNumber = 1
+  let synced = 0
+
+  // 3. Pagination loop
+  while (true) {
+    const params = new URLSearchParams({
+      page_access_token: TOKEN,
+      since: String(since),
+      until: String(until),
+      page_number: String(pageNumber),
+      page_size: '100',
+      // 'updated_at' captures BOTH newly created customers AND existing customers
+      // whose info has just changed. Switch to 'inserted_at' if you only want net-new
+      // customers (see IMPORTANT block below).
+      order_by: 'updated_at',
+    })
+
+    const r = await fetch(`${PANCAKE_BASE}/pages/${PAGE_ID}/page_customers?${params}`)
+    if (!r.ok) throw new Error(`Pancake ${r.status}`)
+    const { customers = [] } = await r.json()
+    if (customers.length === 0) break
+
+    // 4. Push each customer to the CRM (idempotent — CRM dedupes by external_id)
+    for (const c of customers) {
+      await pushToCRM(c)
+      synced++
+    }
+
+    pageNumber++
+    await new Promise(r => setTimeout(r, 300))   // throttle, stay under 5 req/s
+  }
+
+  // 5. Advance the sync cursor
+  await db.query(
+    `INSERT INTO sync_state (resource, last_sync_at) VALUES ('customers', to_timestamp($1))
+     ON CONFLICT (resource) DO UPDATE SET last_sync_at = to_timestamp($1)`,
+    [until]
+  )
+  await db.end()
+
+  res.json({ synced, since, until })
+}
+
+async function pushToCRM(customer) {
+  const body = {
+    external_id: customer.psid,
+    name: customer.name,
+    phone: customer.phone_numbers?.[0] || null,
+    email: customer.emails?.[0] || null,
+    gender: customer.gender,
+    source: 'pancake',
+    created_at: customer.inserted_at,
+  }
+
+  const r = await fetch(CRM_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${CRM_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!r.ok) {
+    console.error(`CRM push failed for ${customer.psid}:`, await r.text())
+    // Optional: push to a dead-letter queue for later retry, or send an alert
+  }
+}
+```
+
+Minimal Postgres schema needed:
+
+```sql
+CREATE TABLE sync_state (
+  resource TEXT PRIMARY KEY,
+  last_sync_at TIMESTAMPTZ NOT NULL
+);
+```
+
+> [!IMPORTANT]
+> **`order_by=updated_at` (the default in the sample code) vs `order_by=inserted_at` — what's the difference?**
+>
+> - **`updated_at`** (recommended for most cases): captures **both newly created customers** and **existing customers whose data has changed** (phone updated, email added, name edited...). The CRM receives all changes and upserts by `external_id = psid`. Trade-off: returns ~2-3× more records (every customer chat reply can also bump `updated_at`) → higher API call volume.
+>
+> - **`inserted_at`**: only captures **net-new customers** in the `since/until` window. Lighter and cheaper, but **misses** every information update after the customer first appears in the CRM.
+>
+> **Recommended pattern for production at scale (>5K customers)**: run two parallel crons with two separate `sync_state` rows (`customers_new` and `customers_updates`):
+> - Hourly cron using `inserted_at` → captures new customers (cheap, few records)
+> - 15-minute cron using `updated_at` with a short `since` window (e.g. last 30 minutes) → captures fresh updates
+>
+> Small volume (under 5K customers): one cron with `updated_at` as in the sample is enough.
+
+### 5.3. Deploy to Vercel
+
+1. Push code to a GitHub repo
+2. Import into Vercel, set env vars: `PANCAKE_PAGE_ID`, `PANCAKE_PAGE_ACCESS_TOKEN`, `CRM_API_ENDPOINT`, `CRM_API_TOKEN`, `DATABASE_URL`, `CRON_SECRET`
+3. Create `vercel.json`:
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/sync-pancake-customers", "schedule": "0 * * * *" }
+  ]
+}
+```
+
+4. Deploy → Vercel runs the cron every hour automatically
+
+> [!TIP]
+> **When you need realtime** (latency under 1 minute): add a webhook receiver at `/api/pancake/webhook` so Pancake pushes new events immediately. The 1-hour cron then acts as a **reconciler** — fixing events missed when the webhook failed. See [the webhook setup guide](/en/blog/pancake-webhook-and-api-send-message).
+
+### 5.4. Logging & alerting you'll want
+
+- Log each run: timestamp, records synced, error count
+- Alert when: 3 consecutive runs fail, or lag (`now() - last_sync_at`) > 2 hours
+- Tools: Vercel logs + email alert; or Sentry for error tracking
+
+---
+
+## 6. Quick decision — which option to pick?
+
+```
+Need to extract Pancake data into your CRM?
+│
+├─ Only occasionally (weekly/monthly reports)
+│   → Option 1: Postman
+│
+├─ Automated, CRM has a Make/n8n connector
+│   → Option 2: Make.com / n8n
+│
+└─ Automated, internal CRM or large volume
+    → Option 3: Node.js cron
+    ├─ 1-hour latency is OK → Vercel cron free tier
+    └─ Need realtime under 5 minutes → Cron + Webhook receiver
+```
+
+---
+
+## 7. Pitfalls that apply to every option
+
+- **Rate limit 5 req/page/second** — counted per page, not per IP. Exceeding it returns HTTP 429.
+- **PII security**: phone + email are sensitive. Encrypt at-rest (Postgres pgcrypto), and have a deletion workflow when customers request it (GDPR/PDPA).
+- **Token rotation**: the Page Access Token does not expire, but it can be disabled/regenerated when staff leave. Set up an alert for when scripts start returning 401.
+- **Multi-page**: each page needs its own token. Store in a secret manager — do NOT hardcode. Loop through pages with delays in between.
+- **Idempotency**: use `psid` (customer) or conversation `id` as the CRM dedup key. Prevents duplicates when crons re-run.
+- **Phone normalization**: clean to E.164 (`+84xxx`) before pushing to the CRM. Pancake returns raw `0xxx`.
+
+---
+
+## 8. FAQ
+
+**Q: I don't have a developer. Which options can I do?**
+A: Options 1 (Postman) and 2 (Make.com with a built-in CRM connector) — no code required. Google Apps Script is a fourth option not covered here; if your CRM is Google Workspace, it's worth considering too.
+
+**Q: What if my CRM has no public API?**
+A: Two paths: (a) export to CSV via option 1 and import manually into the CRM, (b) use Google Sheets as an intermediary (Pancake → Sheets via Apps Script → import into the CRM).
+
+**Q: Which option has the lowest latency?**
+A: Option 3 + webhook receiver — near-realtime (under 5 seconds). Polling alone is at minimum 5 minutes (Vercel Pro) or 1 hour (Vercel free).
+
+**Q: Does Pancake have an official HubSpot/Salesforce integration?**
+A: **No.** As of this writing, Pancake has no official connector for HubSpot or Salesforce — you have to build one of the 3 options in this guide. Option 2 (Make.com / n8n) is the fastest since both CRMs have built-in connectors in Make/n8n, no code required.
+
+**Q: Lowest cost for automated sync?**
+A: Make.com's free tier (1000 ops/month) is enough for small shops with < 30 customers/day. Or self-host n8n on a $5/month VPS for unlimited ops. Or Vercel Cron's free tier for option 3 if 1-hour latency is acceptable.
+
+**Q: Do I need to store Pancake data in an internal DB before pushing to the CRM?**
+A: Not required. Option 2 (Make.com) pushes directly. Option 3 uses a DB by default to track `last_sync_at`, but you can skip it if you're willing to store state in a file or env var.
+
+**Q: Who should I outsource option 3 to?**
+A: Consider **reaching out directly to Pancake technical support** for detailed guidance — Pancake's team knows API best practices and edge cases better than any outside developer. You can also find freelance developers via the Pancake developer community or Facebook groups focused on Pancake POS.
+
+---
+
+## 9. Related posts
+
+- [Introducing Pancake — Multi-channel Chat Management Platform](/en/blog/introducing-pancake) — overview for newcomers
+- [Pancake Webhook & API Send Message Guide](/en/blog/pancake-webhook-and-api-send-message) — base for Page Access Token + webhooks
+- [Get Pancake Conversations List API](/en/blog/get-pancake-conversations-list-api) — conversations endpoint in detail (cursor pagination)
+- [Pancake Page Customers API — Sync customers into your CRM](/en/blog/pancake-page-customers-api-sync-to-crm) — customers endpoint in detail (offset pagination)
+- [Pancake Developer Docs](https://developer.pancake.biz/) — official documentation
+
+---
+
+*Last updated: 2026-06-01. The options will be updated as Pancake releases new connectors or changes the rate limit.*
