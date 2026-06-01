@@ -29,6 +29,10 @@ type FbInfoResponse = {
   category?: string
   about?: string
   fanCount?: number
+  // Engagement signals parsed from OG description — usable for legit-checking
+  // without needing a Graph token.
+  talkingAbout?: number
+  wereHere?: number
   // Telemetry / capability flags.
   graphEnabled: boolean
   blocked?: boolean
@@ -83,6 +87,8 @@ function extractActorId(html: string): string | undefined {
     /\\"userID\\":\\"(\d{6,})\\"/,
     /"user":\{"id":"(\d{6,})"/,
     /"actorID":"(\d{6,})"/,
+    // Bare fb:// URI without content= wrapper or ?id= query (catch-all from fb-id lib pattern).
+    /fb:\/\/(?:page|profile)\/(\d{6,})/i,
   ]
   for (const re of patterns) {
     const m = html.match(re)
@@ -101,13 +107,46 @@ function extractActorId(html: string): string | undefined {
   return undefined
 }
 
+// Parse engagement counts from FB's standard OG description format. FB returns
+// localized strings (VN: "977.200 lượt thích · 152.565 người đang nói về điều này
+// · 10 lượt đăng ký ở đây"; EN: "X likes · Y talking about this · Z were here").
+// All three are public legit signals — page with high engagement + check-ins is
+// statistically more trustworthy than a brand-new empty page.
+function parseEngagementSignals(description?: string): {
+  likes?: number
+  talkingAbout?: number
+  wereHere?: number
+} {
+  if (!description) return {}
+  const parseNum = (s: string): number | undefined => {
+    const cleaned = s.replace(/[.,\s]/g, '')
+    const n = parseInt(cleaned, 10)
+    return Number.isFinite(n) ? n : undefined
+  }
+  const likesMatch = description.match(/([\d.,\s]+)\s*(?:lượt thích|likes)/i)
+  const talkingMatch = description.match(
+    /([\d.,\s]+)\s*(?:người đang nói|talking about)/i
+  )
+  const wereHereMatch = description.match(/([\d.,\s]+)\s*(?:lượt đăng ký|were here)/i)
+  return {
+    likes: likesMatch ? parseNum(likesMatch[1]) : undefined,
+    talkingAbout: talkingMatch ? parseNum(talkingMatch[1]) : undefined,
+    wereHere: wereHereMatch ? parseNum(wereHereMatch[1]) : undefined,
+  }
+}
+
 function looksLikeLoginWall(html: string): boolean {
   const indicators = ['Log into Facebook', 'login_form', 'You must log in to continue']
   const hasOg = /property=["']og:title["']/.test(html)
   return !hasOg && indicators.some((s) => html.includes(s))
 }
 
-async function fetchHtml(url: string): Promise<string> {
+const UA_FB_CRAWLER =
+  'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
+const UA_DESKTOP_CHROME =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+async function fetchHtml(url: string, userAgent: string): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
@@ -115,14 +154,93 @@ async function fetchHtml(url: string): Promise<string> {
       signal: controller.signal,
       redirect: 'follow',
       headers: {
-        'User-Agent':
-          'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+        'User-Agent': userAgent,
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'en-US,en;q=0.9',
       },
     })
     if (!res.ok) throw new Error(`HTTP_${res.status}`)
     return await res.text()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Try the facebookexternalhit UA first (returns minimal OG-rich HTML when it
+// works), and fall back to a desktop Chrome UA if FB serves a login wall or
+// strips the OG meta tags. The desktop UA is the trick the fb-id library uses
+// and often unblocks pages where the crawler UA gets rate-limited.
+async function fetchHtmlWithFallback(
+  url: string
+): Promise<{ html: string; uaUsed: 'crawler' | 'desktop'; blocked: boolean }> {
+  let html = await fetchHtml(url, UA_FB_CRAWLER)
+  const firstBlocked = looksLikeLoginWall(html)
+  const firstHasOg = /property=["']og:title["']/.test(html)
+  if (!firstBlocked && firstHasOg) {
+    return { html, uaUsed: 'crawler', blocked: false }
+  }
+  try {
+    const fallback = await fetchHtml(url, UA_DESKTOP_CHROME)
+    if (!looksLikeLoginWall(fallback)) {
+      return { html: fallback, uaUsed: 'desktop', blocked: false }
+    }
+  } catch {
+    /* fall through with the original response */
+  }
+  return { html, uaUsed: 'crawler', blocked: firstBlocked }
+}
+
+type PluginInfo = {
+  pageId: string
+  pageName?: string
+  coverPhotoUrl?: string
+}
+
+function decodeJsonUnicode(s: string): string {
+  return s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+}
+
+// Resolves the real page entity ID (different from the actor/user-mode ID
+// exposed by the OG scrape) by hitting FB's Page Plugin embed endpoint. The
+// plugin response works without auth and exposes the entity ID along with
+// pageName and a cover photo URL — handy as fallback when the OG scrape
+// times out on heavy pages.
+async function fetchPluginInfo(canonicalUrl: string): Promise<PluginInfo | null> {
+  const pluginUrl = `https://www.facebook.com/plugins/page.php?href=${encodeURIComponent(
+    canonicalUrl
+  )}`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(pluginUrl, {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': UA_DESKTOP_CHROME,
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    // Normalize JSON-escaped slashes (`\/`) — FB sometimes returns the
+    // embed_page link inside a JSON blob like
+    //   "pageURL":"https:\/\/www.facebook.com\/111242880276829?ref=embed_page"
+    // which the literal-`/` regex would miss.
+    const normalized = html.replace(/\\\//g, '/')
+    const idMatch = normalized.match(/facebook\.com\/(\d{6,})\?ref=embed_page/)
+    if (!idMatch) return null
+
+    const nameMatch = normalized.match(/"pageName":"([^"]+)"/)
+    const coverMatch = normalized.match(/"coverPhotoURL":"([^"]+)"/)
+
+    return {
+      pageId: idMatch[1],
+      pageName: nameMatch ? decodeJsonUnicode(nameMatch[1]) : undefined,
+      coverPhotoUrl: coverMatch ? coverMatch[1] : undefined,
+    }
+  } catch {
+    return null
   } finally {
     clearTimeout(timer)
   }
@@ -195,17 +313,19 @@ export async function GET(request: NextRequest) {
     graphEnabled,
   }
 
-  // Run OG scrape and Graph enrichment concurrently. Either may fail.
+  // Run OG scrape, plugin-embed page-id lookup, and Graph enrichment concurrently.
+  // Any of these may fail independently.
   const lookupKey = parsed.username || parsed.numericId || ''
-  const [htmlResult, graphResult] = await Promise.allSettled([
-    fetchHtml(parsed.canonical),
+  const [htmlResult, pluginResult, graphResult] = await Promise.allSettled([
+    fetchHtmlWithFallback(parsed.canonical),
+    fetchPluginInfo(parsed.canonical),
     enrichFromGraph(lookupKey),
   ])
 
   // OG scrape
   if (htmlResult.status === 'fulfilled') {
-    const html = htmlResult.value
-    if (looksLikeLoginWall(html)) {
+    const { html, blocked } = htmlResult.value
+    if (blocked) {
       result.blocked = true
     } else {
       result.name = metaContent(html, 'og:title')
@@ -213,6 +333,11 @@ export async function GET(request: NextRequest) {
       result.profileImage = metaContent(html, 'og:image')
       result.ogType = metaContent(html, 'og:type')
       if (!result.actorId) result.actorId = extractActorId(html)
+      // Engagement signals from the OG description string.
+      const signals = parseEngagementSignals(result.description)
+      if (typeof signals.likes === 'number') result.fanCount = signals.likes
+      if (typeof signals.talkingAbout === 'number') result.talkingAbout = signals.talkingAbout
+      if (typeof signals.wereHere === 'number') result.wereHere = signals.wereHere
       if (!result.name && !result.actorId && !result.profileImage) {
         result.blocked = true
       }
@@ -220,6 +345,26 @@ export async function GET(request: NextRequest) {
   } else {
     result.fetchError =
       htmlResult.reason instanceof Error ? htmlResult.reason.message : 'FETCH_FAILED'
+  }
+
+  // Plugin-embed lookup — surfaces the real page entity ID without needing
+  // a Graph API token. Only applies to pages, not personal profiles.
+  if (pluginResult.status === 'fulfilled' && pluginResult.value) {
+    const plug = pluginResult.value
+    result.pageId = plug.pageId
+    // Override og:image with a browser-usable avatar URL. The og:image from
+    // FB's crawler endpoint returns an HTML redirect blob (not an image) when
+    // used as <img src>, so browsers show a broken icon. The Graph picture
+    // endpoint returns a real HTTP 302 → fbcdn image and works directly.
+    result.profileImage = `https://graph.facebook.com/${plug.pageId}/picture?type=large`
+    // Fallback name from plugin response when OG scrape times out or returns
+    // empty (heavy pages can blow the 8s OG fetch budget).
+    if (!result.name && plug.pageName) result.name = plug.pageName
+    // Clear the fetchError signal when the plugin path gave us usable data —
+    // the UI shouldn't render an error banner if we have name + pageId + avatar.
+    if (result.fetchError && (result.name || result.pageId)) {
+      delete result.fetchError
+    }
   }
 
   // Graph enrichment — only sets fields when we actually got data.
