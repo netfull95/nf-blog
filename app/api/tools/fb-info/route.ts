@@ -173,7 +173,7 @@ async function fetchHtml(url: string, userAgent: string): Promise<string> {
 async function fetchHtmlWithFallback(
   url: string
 ): Promise<{ html: string; uaUsed: 'crawler' | 'desktop'; blocked: boolean }> {
-  let html = await fetchHtml(url, UA_FB_CRAWLER)
+  const html = await fetchHtml(url, UA_FB_CRAWLER)
   const firstBlocked = looksLikeLoginWall(html)
   const firstHasOg = /property=["']og:title["']/.test(html)
   if (!firstBlocked && firstHasOg) {
