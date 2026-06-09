@@ -16,6 +16,10 @@
       "vi": "gioi-thieu-pancake",
       "en": "introducing-pancake"
     },
+    "pancake-conversation-workflow": {
+      "en": "pancake-conversation-workflow-tag-assign-api",
+      "vi": "quan-ly-hoi-thoai-pancake-api-tag-assign"
+    },
     "pancake-webhook-api": {
       "en": "pancake-webhook-and-api-send-message",
       "vi": "pancake-webhook-va-api-gui-tin-nhan"
@@ -29,8 +33,10 @@
     "gioi-thieu-pancake": "intro-pancake",
     "introducing-pancake": "intro-pancake",
     "lay-danh-sach-hoi-thoai-pancake-api": "pancake-list-conversations",
+    "pancake-conversation-workflow-tag-assign-api": "pancake-conversation-workflow",
     "pancake-page-customers-api-sync-to-crm": "pancake-page-customers",
     "pancake-webhook-and-api-send-message": "pancake-webhook-api",
-    "pancake-webhook-va-api-gui-tin-nhan": "pancake-webhook-api"
+    "pancake-webhook-va-api-gui-tin-nhan": "pancake-webhook-api",
+    "quan-ly-hoi-thoai-pancake-api-tag-assign": "pancake-conversation-workflow"
   }
 }

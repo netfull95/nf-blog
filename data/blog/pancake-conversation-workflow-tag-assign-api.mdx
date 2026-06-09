@@ -1,0 +1,461 @@
+---
+title: "Pancake Conversation Workflow API — Tags, Assign Staff, Mark Read/Unread"
+date: "2026-06-09"
+lastmod: "2026-06-09"
+language: "en"
+translationKey: "pancake-conversation-workflow"
+summary: "Detailed guide to the 4 endpoint groups that manage a Pancake conversation's lifecycle — add/remove tags, assign staff, mark read/unread. Includes 2 lookup endpoints (tags + users), keyword-based auto-tag patterns, round-robin assignment, and a heads-up on Pancake's built-in round_robin_users feature."
+tags: ["Pancake", "API", "Page Access Token", "Conversations", "CRM Workflow", "Tag", "Assign", "Pancake developer", "Integration"]
+---
+
+# Pancake Conversation Workflow API — Tags, Assign Staff, Mark Read/Unread
+
+> **TL;DR:** Pancake provides 4 endpoint groups to manage CRM workflow inside a conversation: `POST /conversations/{id}/tags` (add/remove tag), `POST /conversations/{id}/assign` (assign staff to handle), `POST /conversations/{id}/read` and `/unread` (mark as read/unread). Plus 2 lookup endpoints: `GET /pages/{id}/tags` and `GET /pages/{id}/users`. All on `public_api/v1` with `page_access_token`. **Bonus**: Pancake has a **built-in round-robin** feature — configure it once in the dashboard and the system auto-assigns new conversations to staff in rotation, no code needed.
+
+After you know how to [list conversations](/en/blog/get-pancake-conversations-list-api) and [sync customers](/en/blog/pancake-page-customers-api-sync-to-crm) from Pancake, the next step in CRM workflow is **managing each conversation's lifecycle**: classifying with tags, assigning to staff, marking for follow-up. This article covers all 4 workflow endpoints + 2 lookups, with production-grade patterns.
+
+If you're new to the Pancake API, read the [introduction](/en/blog/introducing-pancake) and the [webhook + reply API guide](/en/blog/pancake-webhook-and-api-send-message) first.
+
+---
+
+## 1. When do you need these endpoints?
+
+| Use case | Primary endpoint |
+|---|---|
+| **Auto-tag conversations by message keyword** (e.g. "buy/order" → tag "Orders") | `POST /tags` |
+| **Round-robin shift coverage** for sales staff automatically | `POST /assign` |
+| **Mark unread for follow-up later** (e.g. "I promised to call tomorrow") | `POST /unread` |
+| **Bulk re-assign** when staff take leave | `POST /assign` |
+| **Sync with internal CRM** — Pancake tag = Salesforce/HubSpot pipeline stage | `POST /tags` |
+| **Staff KPI reporting** by conversations handled | `POST /assign` + tracking |
+
+> [!TIP]
+> Before writing complex logic yourself, check the Pancake dashboard → **Settings → Auto-assign conversations** for built-in features. Some cases (round-robin, simple keyword auto-tag) have a no-code config UI.
+
+---
+
+## 2. Prepare your Page Access Token
+
+All endpoints in this article require `page_access_token`. See the [Webhook & API guide — section 1](/en/blog/pancake-webhook-and-api-send-message#1-prepare-the-page-access-token) for the full setup.
+
+---
+
+## 3. List the page's tags
+
+Before tagging a conversation you need the **tag_id** — you can't pass a tag name directly.
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/tags?page_access_token={token}
+```
+
+### cURL example
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/tags" \
+  --data-urlencode "page_access_token=$TOKEN"
+```
+
+### Response shape
+
+```json
+{
+  "tags": [
+    { "id": 0, "text": "Quality check", "color": "#4b5577", "lighten_color": "#c9ccd6" },
+    { "id": 1, "text": "Orders", "color": "#2ecc71", "lighten_color": "#a3e4be" },
+    { "id": 2, "text": "Complaints", "color": "#e74c3c", "lighten_color": "#f5b8b0" }
+  ]
+}
+```
+
+> [!WARNING]
+> `id` in the response is an **integer** (0, 1, 2...), but the POST add/remove endpoint expects it as a **string**. Pancake accepts both forms in the request body, but use string to be safe.
+
+### Pattern: build a name → id map
+
+```javascript
+const BASE = 'https://pages.fm/api/public_api/v1'
+
+async function loadTagMap(pageId, token) {
+  const r = await fetch(`${BASE}/pages/${pageId}/tags?page_access_token=${token}`)
+  const { tags = [] } = await r.json()
+  return Object.fromEntries(tags.map((t) => [t.text.toLowerCase(), String(t.id)]))
+}
+
+// Usage:
+const tagMap = await loadTagMap(PAGE_ID, TOKEN)
+const orderTagId = tagMap['orders']    // '1'
+```
+
+Cache `tagMap` in memory (TTL 1 hour) — tags rarely change, no need to fetch on every call.
+
+---
+
+## 4. Add / Remove a tag on a conversation
+
+```
+POST https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/tags?page_access_token={token}
+```
+
+### Request body
+
+```json
+{
+  "action": "add",          // or "remove"
+  "tag_id": "1"
+}
+```
+
+### cURL — add "Orders" tag
+
+```bash
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/tags?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "action": "add", "tag_id": "1" }'
+```
+
+### Response
+
+```json
+{
+  "data": [0, 1],              // tag_id array on the conversation AFTER the update
+  "success": true,
+  "timestamp": 1717900800
+}
+```
+
+> [!IMPORTANT]
+> Each request **operates on only one tag**. To add multiple tags to a single conversation → loop with throttle, staying under 5 req/s (see [rate limit](/en/blog/get-pancake-conversations-list-api#7-common-pitfalls)).
+
+### Pattern: auto-tag from a webhook by keyword
+
+```javascript
+// Webhook handler for message events
+async function onMessageReceived(event, tagMap) {
+  const text = event.message?.text?.toLowerCase() || ''
+
+  const keywordToTag = {
+    'order': 'orders',
+    'buy': 'orders',
+    'purchase': 'orders',
+    'price': 'pricing inquiry',
+    'complaint': 'complaints',
+    'issue': 'complaints',
+  }
+
+  const tagsToAdd = new Set()
+  for (const [kw, tagName] of Object.entries(keywordToTag)) {
+    if (text.includes(kw) && tagMap[tagName]) {
+      tagsToAdd.add(tagMap[tagName])
+    }
+  }
+
+  for (const tagId of tagsToAdd) {
+    await fetch(
+      `${BASE}/pages/${event.page_id}/conversations/${event.conversation_id}/tags?page_access_token=${TOKEN}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', tag_id: tagId }),
+      }
+    )
+    await new Promise((r) => setTimeout(r, 250))  // throttle
+  }
+}
+```
+
+---
+
+## 5. List the page's staff users
+
+You need `user.id` for the assign endpoint — you cannot use names or Facebook IDs.
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/users?page_access_token={token}
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": "c4bafd84-7b96-4f28-b59a-031f17c32ddf",   // UUID — use this for assign
+      "name": "Anh Ngoc Nguyen",
+      "fb_id": "116256249766099",
+      "status": "available",                            // available | busy | offline
+      "is_online": true,
+      "status_in_page": "active",
+      "page_permissions": { "permissions": [100, 71, 81] }
+    }
+  ],
+  "disabled_users": [
+    { "id": "...", "name": "...", "fb_id": "..." }
+  ],
+  "round_robin_users": {
+    "inbox": ["fb5ff8ed-434b-4d4b-a213-b595b242b81a"],
+    "comment": ["79d4e769-ac31-4821-8304-d6e251d532e9"]
+  }
+}
+```
+
+Three important fields:
+
+- **`users`**: currently active staff — use for assign
+- **`disabled_users`**: staff that have been disabled (left the company) — don't assign anymore, but still needed for history mapping
+- **`round_robin_users`**: list of users currently in the round-robin rotation managed by Pancake itself
+
+> [!TIP]
+> **Pancake has a built-in round-robin** — configure the user list in the dashboard or via `POST /pages/{page_id}/round_robin_users`, and Pancake will **auto-assign** new conversations to the next staff member in rotation. If a simple round-robin is enough → you don't need to code the logic in section 6.4. Only write your own when you need custom rules (assign by skill, language, VIP tier...). See the [official Pancake docs on auto-assigning conversations](https://pke.gg/4o5nnrvn).
+
+---
+
+## 6. Assign staff to a conversation
+
+```
+POST https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/assign?page_access_token={token}
+```
+
+### Request body
+
+```json
+{
+  "assignee_ids": [
+    "c4bafd84-7b96-4f28-b59a-031f17c32ddf",
+    "fb5ff8ed-434b-4d4b-a213-b595b242b81a"
+  ]
+}
+```
+
+### cURL — assign to one staff member
+
+```bash
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/assign?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "assignee_ids": ["c4bafd84-7b96-4f28-b59a-031f17c32ddf"] }'
+```
+
+> [!WARNING]
+> `assignee_ids` is a **full array replacement**, not an append. Passing `[]` → unassigns everyone. Passing one new user without the existing ones → existing ones get unassigned. To add an assignee, GET the conversation, merge the array, then POST.
+
+### Pattern: custom round-robin (when you need it)
+
+Store a cursor in a DB or Redis. Each time a conversation needs to be assigned → fetch the next user by index.
+
+```javascript
+// Assume availableUsers comes from the /users API, filtered by status='available'
+async function roundRobinAssign(pageId, conversationId, availableUsers, db) {
+  if (availableUsers.length === 0) return  // no one available
+
+  // Get the latest index from DB
+  const row = await db.query(
+    `SELECT idx FROM rr_cursor WHERE page_id = $1`, [pageId]
+  )
+  const lastIdx = row.rows[0]?.idx ?? -1
+  const nextIdx = (lastIdx + 1) % availableUsers.length
+  const targetUser = availableUsers[nextIdx]
+
+  await fetch(
+    `${BASE}/pages/${pageId}/conversations/${conversationId}/assign?page_access_token=${TOKEN}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignee_ids: [targetUser.id] }),
+    }
+  )
+
+  // Save cursor
+  await db.query(
+    `INSERT INTO rr_cursor (page_id, idx) VALUES ($1, $2)
+     ON CONFLICT (page_id) DO UPDATE SET idx = $2`,
+    [pageId, nextIdx]
+  )
+}
+```
+
+> [!TIP]
+> Reminder: unless you have specific custom requirements (assign by skill / language / VIP tier), **use Pancake's built-in round-robin** instead of writing your own — saves you one cron job and one DB table.
+
+---
+
+## 7. Mark Read / Unread
+
+Two simple endpoints, no request body:
+
+```bash
+# Mark as read
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/read?page_access_token=$TOKEN"
+
+# Mark as unread — for later follow-up
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/unread?page_access_token=$TOKEN"
+```
+
+### Mark Unread use cases
+
+- **Schedule a follow-up**: customer asks "call me tomorrow morning" → mark unread → next morning the agent opens Pancake, sees the red bubble, knows to reply
+- **Shift hand-off**: night shift didn't finish → mark unread so the morning shift continues
+- **Bulk re-open**: cron job marks unread for conversations that have been read for over 24h but haven't been replied to
+
+### Mark Read use cases
+
+- **After a bot auto-reply**: the bot already replied → mark read so it doesn't show in the agent's inbox
+- **Spam filter**: spam detected → mark read + tag "Spam" → doesn't disturb agents
+
+---
+
+## 8. End-to-end workflow — webhook → auto-tag → auto-assign
+
+Combine the 3 endpoints above into a single production-grade pipeline:
+
+```javascript
+import { Client } from 'pg'
+
+const BASE = 'https://pages.fm/api/public_api/v1'
+const PAGE_ID = process.env.PANCAKE_PAGE_ID
+const TOKEN = process.env.PANCAKE_PAGE_ACCESS_TOKEN
+
+// Cache tag map + users, refresh every hour
+let cache = { tagMap: null, users: [], expiresAt: 0 }
+
+async function refreshCache() {
+  if (Date.now() < cache.expiresAt) return cache
+
+  const [tagsRes, usersRes] = await Promise.all([
+    fetch(`${BASE}/pages/${PAGE_ID}/tags?page_access_token=${TOKEN}`),
+    fetch(`${BASE}/pages/${PAGE_ID}/users?page_access_token=${TOKEN}`),
+  ])
+  const { tags = [] } = await tagsRes.json()
+  const { users = [] } = await usersRes.json()
+
+  cache = {
+    tagMap: Object.fromEntries(tags.map((t) => [t.text.toLowerCase(), String(t.id)])),
+    users: users.filter((u) => u.status === 'available'),
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  }
+  return cache
+}
+
+// Webhook handler — Pancake calls this for each new message
+export default async function pancakeWebhook(req, res) {
+  res.status(200).json({ ok: true })   // Reply 200 first to prevent Pancake retries — handle async
+
+  const event = req.body
+  if (event.type !== 'new_message') return
+  if (event.from?.id === event.page_id) return  // skip messages from the page itself (avoid loops)
+
+  const { conversation_id, message, page_id } = event
+  const { tagMap, users } = await refreshCache()
+
+  // 1. Auto-tag by keyword
+  const text = (message?.text || '').toLowerCase()
+  const tagIds = []
+  if (text.match(/buy|order|purchase/)) tagIds.push(tagMap['orders'])
+  if (text.match(/price|cost/)) tagIds.push(tagMap['pricing inquiry'])
+  if (text.match(/complaint|issue|problem/)) tagIds.push(tagMap['complaints'])
+
+  for (const tagId of tagIds.filter(Boolean)) {
+    await fetch(
+      `${BASE}/pages/${page_id}/conversations/${conversation_id}/tags?page_access_token=${TOKEN}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', tag_id: tagId }),
+      }
+    )
+    await new Promise((r) => setTimeout(r, 250))
+  }
+
+  // 2. Auto-assign round-robin (if not already assigned)
+  if (!event.assignee_ids || event.assignee_ids.length === 0) {
+    const nextUser = users[Math.floor(Math.random() * users.length)]   // simple random
+    if (nextUser) {
+      await fetch(
+        `${BASE}/pages/${page_id}/conversations/${conversation_id}/assign?page_access_token=${TOKEN}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assignee_ids: [nextUser.id] }),
+        }
+      )
+    }
+  }
+}
+```
+
+> [!IMPORTANT]
+> Key pattern: **reply 200 OK first, process later**. Pancake has a webhook timeout (a few seconds) — if you process tag/assign slowly then reply, Pancake will retry → duplicate side effects. Best practice: push the event into a queue (Redis/SQS) and a worker handles it async. The code above is a simplified version for illustration.
+
+---
+
+## 9. Common pitfalls
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Tag doesn't show in dashboard after add | Browser cache, or wrong `tag_id` lookup | F5 the dashboard; verify `tag_id` via `GET /tags` |
+| 400 on assign | Wrong `user.id` (used `fb_id` instead of `id`) | Use the `id` (UUID) field from `GET /users`, not `fb_id` |
+| Assigned but staff get no notification | User `status` = offline / disabled | Filter `users` by `status='available' && status_in_page='active'` before assign |
+| Add tag succeeds but `data` array is missing the new tag | Tag was already there, or race condition | Read `data` to confirm the actual state instead of assuming |
+| Pancake retries the webhook indefinitely | Slow handler / timeout / 5xx response | Reply 200 immediately, handle async; check rate limit; log errors |
+
+---
+
+## 10. FAQ
+
+**Q: Where does `tag_id` come from? Can I use the tag name directly?**
+
+A: From `GET /pages/{page_id}/tags`. You **cannot** use the tag name — you have to look up the ID first. Recommended: cache a name→id map in memory.
+
+**Q: Can I create a new tag via the API?**
+
+A: **No.** Tags can only be created from the Pancake dashboard (Settings → Labels). The API only allows adding/removing existing tags.
+
+**Q: Can I assign multiple staff members at once?**
+
+A: **Yes.** `assignee_ids` is an array — pass multiple UUIDs. All of them will see the conversation in their inbox. Use case: a critical conversation that needs two people watching.
+
+**Q: How do I remove all tags from a conversation at once?**
+
+A: There's no bulk-remove endpoint. You have to GET the conversation → grab the `tags` array → loop POST remove on each one with throttling.
+
+**Q: Does Pancake auto-assign when a new customer messages in?**
+
+A: **Yes** if you configure **round-robin users** in the dashboard or via `POST /round_robin_users`. Pancake auto-assigns to the next user in rotation. You don't need to code anything — see [section 5 TIP](#5-list-the-pages-staff-users) and the [official Pancake docs on auto-assigning conversations](https://pke.gg/4o5nnrvn).
+
+**Q: When a staff member is offline, does the conversation get auto-assigned to the next person?**
+
+A: Pancake's built-in round-robin **does** check `status` — it skips offline users. If you write your own, you have to filter `users.filter(u => u.is_online && u.status === 'available')`.
+
+**Q: Integrating with Salesforce/HubSpot — how do I map Pancake tags to pipeline stages?**
+
+A: Create a static map in code:
+- Pancake tag "Pricing inquiry" → HubSpot stage "Qualified Lead"
+- Pancake tag "Orders" → HubSpot stage "Closed Won"
+- Pancake tag "Complaints" → Salesforce Case "New"
+
+On every Pancake `conversation_tagged` webhook → call the HubSpot/Salesforce API to update the stage. See the [3 ways to extract Pancake data](/en/blog/3-ways-to-extract-pancake-data-into-your-crm) post for detailed integration patterns.
+
+---
+
+## 11. Summary
+
+- **4 workflow endpoints**: `tags` (add/remove), `assign` (assignee_ids array), `read`, `unread`. All on `public_api/v1`, `page_access_token`.
+- **2 mandatory lookup endpoints**: `GET /tags` (for `tag_id`), `GET /users` (for `user.id` UUID).
+- **Pancake has built-in round-robin** — use it for simple cases, save yourself the code.
+- **Auto-tag pattern**: webhook → keyword match → POST add tag. Throttle under 5 req/s.
+- **Assign is a full array replace**, not append — merge before POST.
+- **Reply 200 to the webhook first, process async after** — avoid Pancake retries causing duplicates.
+
+---
+
+## Related posts
+
+- [Introducing Pancake — Multi-channel Chat Management Platform](/en/blog/introducing-pancake)
+- [Pancake Webhook & API Send Message Guide](/en/blog/pancake-webhook-and-api-send-message) — base for Page Access Token + webhook setup
+- [Get Pancake Conversations List API](/en/blog/get-pancake-conversations-list-api) — sister endpoint, cursor pagination
+- [Pancake Page Customers API — Sync customers into your CRM](/en/blog/pancake-page-customers-api-sync-to-crm) — customer management
+- [3 Ways to Extract Pancake Data into Your CRM](/en/blog/3-ways-to-extract-pancake-data-into-your-crm) — Postman / Make / Node script
+- [Pancake Developer Docs](https://developer.pancake.biz/) — official documentation (OpenAPI spec)
+
+---
+
+*Last updated: 2026-06-09. API version: `public_api/v1` for all workflow endpoints. Check the OpenAPI spec to verify any changes.*

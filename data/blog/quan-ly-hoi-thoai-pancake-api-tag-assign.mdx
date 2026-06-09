@@ -1,0 +1,461 @@
+---
+title: "Quản lý hội thoại Pancake API — Tag, Assign nhân viên, Mark Read/Unread"
+date: "2026-06-09"
+lastmod: "2026-06-09"
+language: "vi"
+translationKey: "pancake-conversation-workflow"
+summary: "Hướng dẫn chi tiết 4 nhóm endpoint quản lý vòng đời hội thoại Pancake — gắn/gỡ tag, assign nhân viên xử lý, mark read/unread. Kèm 2 endpoint lookup (tags + users), pattern auto-tag theo keyword, round-robin assign, và lưu ý về tính năng round_robin_users built-in của Pancake."
+tags: ["Pancake", "API", "Page Access Token", "Conversations", "CRM Workflow", "Tag", "Assign", "Pancake developer", "Tích hợp"]
+---
+
+# Quản lý hội thoại Pancake API — Tag, Assign nhân viên, Mark Read/Unread
+
+> **TL;DR:** Pancake cung cấp 4 nhóm endpoint quản lý workflow CRM trong conversation: `POST /conversations/{id}/tags` (add/remove tag), `POST /conversations/{id}/assign` (assign nhân viên xử lý), `POST /conversations/{id}/read` và `/unread` (đánh dấu đã/chưa đọc). Kèm 2 endpoint lookup: `GET /pages/{id}/tags` và `GET /pages/{id}/users`. Tất cả ở `public_api/v1`, dùng `page_access_token`. **Bonus**: Pancake có tính năng **round-robin tự động** built-in — bạn config 1 lần ở dashboard, hệ thống sẽ tự assign hội thoại mới cho nhân viên theo lượt, không cần tự code.
+
+Sau khi đã biết cách [lấy danh sách hội thoại](/blog/lay-danh-sach-hoi-thoai-pancake-api) và [đồng bộ khách hàng](/blog/dong-bo-khach-hang-pancake-api-page-customers) từ Pancake, bước tiếp theo trong CRM workflow là **quản lý vòng đời của mỗi hội thoại**: phân loại bằng tag, giao việc cho nhân viên, đánh dấu cần follow-up sau. Bài này cover đầy đủ 4 endpoint workflow + 2 endpoint lookup, kèm pattern thực chiến.
+
+Nếu chưa quen với Pancake API, đọc trước [bài giới thiệu](/blog/gioi-thieu-pancake) và [bài webhook + reply API](/blog/pancake-webhook-va-api-gui-tin-nhan).
+
+---
+
+## 1. Khi nào cần dùng các endpoint này?
+
+| Use case | Endpoint chính |
+|---|---|
+| **Auto-tag conversation theo keyword** tin nhắn (vd: "mua/đặt/order" → tag "Đặt hàng") | `POST /tags` |
+| **Phân ca trực** cho nhân viên sales tự động theo round-robin | `POST /assign` |
+| **Mark unread khách cần follow-up sau** (vd: hứa gọi lại sáng mai) | `POST /unread` |
+| **Bulk re-assign** khi nhân viên nghỉ phép | `POST /assign` |
+| **Sync với CRM nội bộ** — tag Pancake = pipeline stage Salesforce/HubSpot | `POST /tags` |
+| **Báo cáo KPI nhân viên** theo conversation đã xử lý | `POST /assign` + tracking |
+
+> [!TIP]
+> Trước khi tự code logic phức tạp, kiểm tra dashboard Pancake → **Cài đặt → Phân chia hội thoại tự động** xem feature có sẵn nào dùng được. Một số case (round-robin, auto-tag theo từ khoá đơn giản) có UI config no-code.
+
+---
+
+## 2. Chuẩn bị Page Access Token
+
+Toàn bộ endpoint trong bài này cần `page_access_token`. Cách lấy đã có trong [bài Webhook & API gửi tin nhắn](/blog/pancake-webhook-va-api-gui-tin-nhan#1-chuẩn-bị-lấy-page-access-token).
+
+---
+
+## 3. Lấy danh sách Tag của page
+
+Trước khi gắn tag cho conversation, bạn cần biết **tag_id** — không thể dùng tag name trực tiếp.
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/tags?page_access_token={token}
+```
+
+### cURL example
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/tags" \
+  --data-urlencode "page_access_token=$TOKEN"
+```
+
+### Response shape
+
+```json
+{
+  "tags": [
+    { "id": 0, "text": "Kiểm hàng", "color": "#4b5577", "lighten_color": "#c9ccd6" },
+    { "id": 1, "text": "Đặt hàng", "color": "#2ecc71", "lighten_color": "#a3e4be" },
+    { "id": 2, "text": "Khiếu nại", "color": "#e74c3c", "lighten_color": "#f5b8b0" }
+  ]
+}
+```
+
+> [!WARNING]
+> `id` ở response là **integer** (0, 1, 2...), nhưng khi POST add/remove tag thì truyền dạng **string**. Pancake chấp nhận cả 2 form ở request body nhưng cứ string cho an toàn.
+
+### Pattern: build map name → id để dùng
+
+```javascript
+const BASE = 'https://pages.fm/api/public_api/v1'
+
+async function loadTagMap(pageId, token) {
+  const r = await fetch(`${BASE}/pages/${pageId}/tags?page_access_token=${token}`)
+  const { tags = [] } = await r.json()
+  return Object.fromEntries(tags.map((t) => [t.text.toLowerCase(), String(t.id)]))
+}
+
+// Sử dụng:
+const tagMap = await loadTagMap(PAGE_ID, TOKEN)
+const orderTagId = tagMap['đặt hàng']    // '1'
+```
+
+Cache `tagMap` trong memory (TTL 1 giờ) — tag ít thay đổi, không cần fetch mỗi lần.
+
+---
+
+## 4. Add / Remove tag cho conversation
+
+```
+POST https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/tags?page_access_token={token}
+```
+
+### Request body
+
+```json
+{
+  "action": "add",          // hoặc "remove"
+  "tag_id": "1"
+}
+```
+
+### cURL — add tag "Đặt hàng"
+
+```bash
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/tags?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "action": "add", "tag_id": "1" }'
+```
+
+### Response
+
+```json
+{
+  "data": [0, 1],              // mảng tag_id của conversation SAU khi update
+  "success": true,
+  "timestamp": 1717900800
+}
+```
+
+> [!IMPORTANT]
+> Mỗi request **chỉ thao tác 1 tag**. Muốn add nhiều tag cho 1 conversation → loop, throttle dưới 5 req/s (xem [rate limit](/blog/lay-danh-sach-hoi-thoai-pancake-api#7-pitfalls-thường-gặp)).
+
+### Pattern: auto-tag từ webhook theo keyword
+
+```javascript
+// Webhook handler nhận message event
+async function onMessageReceived(event, tagMap) {
+  const text = event.message?.text?.toLowerCase() || ''
+
+  const keywordToTag = {
+    'đặt hàng': 'đặt hàng',
+    'mua': 'đặt hàng',
+    'order': 'đặt hàng',
+    'giá': 'hỏi giá',
+    'khiếu nại': 'khiếu nại',
+    'complaint': 'khiếu nại',
+  }
+
+  const tagsToAdd = new Set()
+  for (const [kw, tagName] of Object.entries(keywordToTag)) {
+    if (text.includes(kw) && tagMap[tagName]) {
+      tagsToAdd.add(tagMap[tagName])
+    }
+  }
+
+  for (const tagId of tagsToAdd) {
+    await fetch(
+      `${BASE}/pages/${event.page_id}/conversations/${event.conversation_id}/tags?page_access_token=${TOKEN}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', tag_id: tagId }),
+      }
+    )
+    await new Promise((r) => setTimeout(r, 250))  // throttle
+  }
+}
+```
+
+---
+
+## 5. Lấy danh sách nhân viên của page
+
+Cần `user.id` để dùng cho assign — không dùng được tên hay Facebook ID.
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/users?page_access_token={token}
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": "c4bafd84-7b96-4f28-b59a-031f17c32ddf",   // UUID — dùng cái này cho assign
+      "name": "Nguyễn Văn A",
+      "fb_id": "116256249766099",
+      "status": "available",                            // available | busy | offline
+      "is_online": true,
+      "status_in_page": "active",
+      "page_permissions": { "permissions": [100, 71, 81] }
+    }
+  ],
+  "disabled_users": [
+    { "id": "...", "name": "...", "fb_id": "..." }
+  ],
+  "round_robin_users": {
+    "inbox": ["fb5ff8ed-434b-4d4b-a213-b595b242b81a"],
+    "comment": ["79d4e769-ac31-4821-8304-d6e251d532e9"]
+  }
+}
+```
+
+3 trường quan trọng:
+
+- **`users`**: nhân viên đang active — dùng để assign
+- **`disabled_users`**: nhân viên đã bị disable (nghỉ việc) — không assign nữa, nhưng vẫn cần để map history
+- **`round_robin_users`**: danh sách user đang trong vòng round-robin do Pancake quản lý sẵn
+
+> [!TIP]
+> **Pancake có round-robin built-in** — bạn config danh sách user trong dashboard hoặc qua `POST /pages/{page_id}/round_robin_users`, Pancake sẽ **tự động assign** hội thoại mới cho nhân viên tiếp theo theo lượt. Nếu round-robin đơn giản đã đủ → không cần tự code logic ở section 6.4. Chỉ tự code khi cần custom (vd: assign theo skill, theo ngôn ngữ, theo VIP tier). Tham khảo [tài liệu chính thức Pancake về Phân chia hội thoại tự động](https://pke.gg/4o5nnrvn).
+
+---
+
+## 6. Assign nhân viên cho conversation
+
+```
+POST https://pages.fm/api/public_api/v1/pages/{page_id}/conversations/{conversation_id}/assign?page_access_token={token}
+```
+
+### Request body
+
+```json
+{
+  "assignee_ids": [
+    "c4bafd84-7b96-4f28-b59a-031f17c32ddf",
+    "fb5ff8ed-434b-4d4b-a213-b595b242b81a"
+  ]
+}
+```
+
+### cURL — assign cho 1 nhân viên
+
+```bash
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/assign?page_access_token=$TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "assignee_ids": ["c4bafd84-7b96-4f28-b59a-031f17c32ddf"] }'
+```
+
+> [!WARNING]
+> `assignee_ids` là **mảng thay thế hoàn toàn**, không append. Truyền `[]` → bỏ assign toàn bộ. Truyền 1 user mới mà không kèm user cũ → user cũ bị bỏ assign. Muốn thêm assignee, phải GET conversation, merge mảng, rồi POST lại.
+
+### Pattern: round-robin tự build (khi cần custom)
+
+Lưu cursor trong DB hoặc Redis. Mỗi lần có conversation cần assign → lấy user tiếp theo theo index.
+
+```javascript
+// Giả sử có sẵn danh sách availableUsers từ /users API, lọc status='available'
+async function roundRobinAssign(pageId, conversationId, availableUsers, db) {
+  if (availableUsers.length === 0) return  // không ai available
+
+  // Lấy index cuối từ DB
+  const row = await db.query(
+    `SELECT idx FROM rr_cursor WHERE page_id = $1`, [pageId]
+  )
+  const lastIdx = row.rows[0]?.idx ?? -1
+  const nextIdx = (lastIdx + 1) % availableUsers.length
+  const targetUser = availableUsers[nextIdx]
+
+  await fetch(
+    `${BASE}/pages/${pageId}/conversations/${conversationId}/assign?page_access_token=${TOKEN}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignee_ids: [targetUser.id] }),
+    }
+  )
+
+  // Save cursor
+  await db.query(
+    `INSERT INTO rr_cursor (page_id, idx) VALUES ($1, $2)
+     ON CONFLICT (page_id) DO UPDATE SET idx = $2`,
+    [pageId, nextIdx]
+  )
+}
+```
+
+> [!TIP]
+> Nhắc lại: nếu không có yêu cầu custom đặc biệt (assign theo skill / ngôn ngữ / VIP tier), **dùng Pancake round-robin built-in** thay vì tự code — tiết kiệm cả 1 cron job và DB table.
+
+---
+
+## 7. Mark Read / Unread
+
+Hai endpoint đơn giản, không có body:
+
+```bash
+# Mark đã đọc
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/read?page_access_token=$TOKEN"
+
+# Mark chưa đọc — dùng cho follow-up sau
+curl -X POST "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/conversations/$CONV_ID/unread?page_access_token=$TOKEN"
+```
+
+### Use case Mark Unread
+
+- **Hẹn follow-up**: khách hỏi "gọi lại sáng mai" → mark unread → sáng mai nhân viên mở Pancake thấy bubble đỏ → biết phải reply
+- **Hand-off ca trực**: ca tối chưa xử lý xong → mark unread để ca sáng tiếp tục
+- **Bulk re-open**: cron job mark unread cho conversation đã read >24h mà chưa được reply
+
+### Use case Mark Read
+
+- **Sau auto-reply bot**: bot đã reply → mark read để không hiện trong inbox của nhân viên
+- **Spam filter**: tin spam đã detect → mark read + tag "Spam" → không quấy rầy nhân viên
+
+---
+
+## 8. Workflow tổng hợp — webhook → auto-tag → auto-assign
+
+Combine 3 endpoint trên thành 1 pipeline production-grade:
+
+```javascript
+import { Client } from 'pg'
+
+const BASE = 'https://pages.fm/api/public_api/v1'
+const PAGE_ID = process.env.PANCAKE_PAGE_ID
+const TOKEN = process.env.PANCAKE_PAGE_ACCESS_TOKEN
+
+// Cache tag map + users map, refresh mỗi 1 giờ
+let cache = { tagMap: null, users: [], expiresAt: 0 }
+
+async function refreshCache() {
+  if (Date.now() < cache.expiresAt) return cache
+
+  const [tagsRes, usersRes] = await Promise.all([
+    fetch(`${BASE}/pages/${PAGE_ID}/tags?page_access_token=${TOKEN}`),
+    fetch(`${BASE}/pages/${PAGE_ID}/users?page_access_token=${TOKEN}`),
+  ])
+  const { tags = [] } = await tagsRes.json()
+  const { users = [] } = await usersRes.json()
+
+  cache = {
+    tagMap: Object.fromEntries(tags.map((t) => [t.text.toLowerCase(), String(t.id)])),
+    users: users.filter((u) => u.status === 'available'),
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  }
+  return cache
+}
+
+// Webhook handler — Pancake gọi vào mỗi khi có message mới
+export default async function pancakeWebhook(req, res) {
+  res.status(200).json({ ok: true })   // Trả 200 ngay tránh Pancake retry — xử lý async
+
+  const event = req.body
+  if (event.type !== 'new_message') return
+  if (event.from?.id === event.page_id) return  // skip tin nhắn từ page tự gửi (tránh loop)
+
+  const { conversation_id, message, page_id } = event
+  const { tagMap, users } = await refreshCache()
+
+  // 1. Auto-tag theo keyword
+  const text = (message?.text || '').toLowerCase()
+  const tagIds = []
+  if (text.match(/mua|đặt|order/)) tagIds.push(tagMap['đặt hàng'])
+  if (text.match(/giá|price/)) tagIds.push(tagMap['hỏi giá'])
+  if (text.match(/khiếu nại|complaint/)) tagIds.push(tagMap['khiếu nại'])
+
+  for (const tagId of tagIds.filter(Boolean)) {
+    await fetch(
+      `${BASE}/pages/${page_id}/conversations/${conversation_id}/tags?page_access_token=${TOKEN}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', tag_id: tagId }),
+      }
+    )
+    await new Promise((r) => setTimeout(r, 250))
+  }
+
+  // 2. Auto-assign round-robin (nếu chưa assign)
+  if (!event.assignee_ids || event.assignee_ids.length === 0) {
+    const nextUser = users[Math.floor(Math.random() * users.length)]   // simple random
+    if (nextUser) {
+      await fetch(
+        `${BASE}/pages/${page_id}/conversations/${conversation_id}/assign?page_access_token=${TOKEN}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assignee_ids: [nextUser.id] }),
+        }
+      )
+    }
+  }
+}
+```
+
+> [!IMPORTANT]
+> Pattern quan trọng: **trả 200 OK trước, xử lý sau**. Pancake có timeout webhook (vài giây) — nếu xử lý tag/assign chậm rồi mới trả response, Pancake sẽ retry → duplicate side-effects. Tốt nhất: push event vào queue (Redis/SQS), worker xử lý async. Code trên là phiên bản đơn giản hoá cho minh hoạ.
+
+---
+
+## 9. Pitfalls thường gặp
+
+| Triệu chứng | Nguyên nhân | Cách fix |
+|---|---|---|
+| Tag không hiện trong dashboard sau khi add | Browser cache, hoặc lookup nhầm `tag_id` | F5 dashboard; verify `tag_id` từ `GET /tags` |
+| 400 khi assign | `user.id` sai (lấy `fb_id` thay vì `id`) | Dùng field `id` (UUID) từ `GET /users`, không phải `fb_id` |
+| Assign rồi nhân viên không nhận noti | User `status` = offline / disabled | Filter `users` theo `status='available' && status_in_page='active'` trước khi assign |
+| Add tag thành công nhưng `data` array thiếu tag mới | Tag đã có sẵn từ trước, hoặc race condition | Đọc `data` để xác nhận state thực tế thay vì giả định |
+| Webhook bị Pancake retry vô hạn | Handler chậm/timeout/trả 5xx | Trả 200 ngay, xử lý async; check rate limit; log error |
+
+---
+
+## 10. FAQ
+
+**Q: `tag_id` lấy từ đâu? Có thể dùng tag name trực tiếp không?**
+
+A: Lấy từ `GET /pages/{page_id}/tags`. **Không thể** dùng tag name — phải lookup ID trước. Khuyến nghị cache map name→id trong memory.
+
+**Q: Có thể tạo tag mới qua API không?**
+
+A: **Không.** Tag chỉ tạo được từ dashboard Pancake (Cài đặt → Nhãn). API chỉ cho phép add/remove tag đã tồn tại.
+
+**Q: Assign nhiều người 1 lúc được không?**
+
+A: **Có.** `assignee_ids` là mảng — truyền nhiều UUID. Tất cả sẽ thấy conversation trong inbox của mình. Use case: hội thoại quan trọng cần 2 người cùng theo dõi.
+
+**Q: Làm sao remove tất cả tag của conversation cùng lúc?**
+
+A: Không có endpoint bulk remove. Phải GET conversation → lấy `tags` array → loop POST remove từng cái với throttle.
+
+**Q: Pancake có tự assign khi khách mới nhắn vào không?**
+
+A: **Có** nếu bạn config **round-robin users** trong dashboard hoặc qua `POST /round_robin_users`. Pancake auto-assign cho user tiếp theo theo lượt. Không cần tự code — xem [section 5 TIP](#5-lấy-danh-sách-nhân-viên-của-page) và [tài liệu chính thức Pancake về Phân chia hội thoại tự động](https://pke.gg/4o5nnrvn).
+
+**Q: Khi nhân viên offline, conversation auto-assign cho người tiếp theo không?**
+
+A: Pancake round-robin built-in **có** check `status` — skip user offline. Tự code phải tự filter `users.filter(u => u.is_online && u.status === 'available')`.
+
+**Q: Tích hợp với Salesforce/HubSpot — mapping tag Pancake → pipeline stage như nào?**
+
+A: Tạo map tĩnh trong code:
+- Pancake tag "Hỏi giá" → HubSpot stage "Qualified Lead"
+- Pancake tag "Đặt hàng" → HubSpot stage "Closed Won"
+- Pancake tag "Khiếu nại" → Salesforce Case "New"
+
+Mỗi lần Pancake webhook fire `conversation_tagged` event → call HubSpot/Salesforce API update stage. Tham khảo [bài 3 phương án truy xuất data](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm) cho integration pattern chi tiết.
+
+---
+
+## 11. Tổng kết
+
+- **4 endpoint workflow**: `tags` (add/remove), `assign` (assignee_ids array), `read`, `unread`. Tất cả ở `public_api/v1`, `page_access_token`.
+- **2 endpoint lookup bắt buộc**: `GET /tags` (lấy `tag_id`), `GET /users` (lấy `user.id` UUID).
+- **Pancake có round-robin built-in** — dùng nếu logic assign đơn giản, đỡ phải code.
+- **Auto-tag pattern**: webhook → keyword match → POST add tag. Throttle dưới 5 req/s.
+- **Assign replace toàn bộ**, không append — phải merge trước khi POST.
+- **Trả 200 webhook trước, xử lý async sau** — tránh Pancake retry gây duplicate.
+
+---
+
+## Bài viết liên quan
+
+- [Giới thiệu Pancake — Nền tảng quản lý chat đa kênh](/blog/gioi-thieu-pancake)
+- [Hướng dẫn kết nối Webhook & API gửi tin nhắn trên Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan) — base về Page Access Token + webhook setup
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api) — endpoint sister, pagination cursor
+- [Page Customers API Pancake — Đồng bộ khách hàng vào CRM](/blog/dong-bo-khach-hang-pancake-api-page-customers) — quản lý khách hàng
+- [3 phương án truy xuất data Pancake để đẩy vào CRM](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm) — Postman/Make/Node script
+- [Pancake Developer Docs](https://developer.pancake.biz/) — tài liệu chính thức (OpenAPI spec)
+
+---
+
+*Last updated: 2026-06-09. Phiên bản API: `public_api/v1` cho toàn bộ endpoint workflow. Tham khảo OpenAPI spec để verify thay đổi.*
