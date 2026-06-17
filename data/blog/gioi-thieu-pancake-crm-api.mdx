@@ -1,0 +1,321 @@
+---
+title: "Giới thiệu Pancake CRM API — Vị trí trong hệ sinh thái Pancake, cấu hình api_key, tổng quan endpoint"
+date: "2026-06-17"
+lastmod: "2026-06-17"
+language: "vi"
+translationKey: "intro-pancake-crm"
+summary: "Pancake CRM là một sản phẩm trong hệ sinh thái Pancake — chức năng khác hoàn toàn với Pancake chat đa kênh. Base URL crm.pancake.vn/api, xác thực bằng api_key per-workspace, quản lý lead/account/contact/order/ticket. Bài này định vị CRM trong suite Pancake, hướng dẫn lấy api_key, test connection và tổng quan 6 nhóm endpoint + webhook."
+tags: ["Pancake", "Pancake CRM", "API", "Workspace", "api_key", "Lead", "Contact", "Order", "Ticket", "Pancake developer", "Tích hợp"]
+---
+
+# Giới thiệu Pancake CRM API — Vị trí trong hệ sinh thái Pancake, cấu hình api_key, tổng quan endpoint
+
+> **TL;DR:** **Pancake CRM** là **một sản phẩm trong hệ sinh thái Pancake** — bên cạnh Pancake chat đa kênh (quản lý hội thoại FB/IG/Zalo), CRM phục vụ flow **sales pipeline + customer management** với tính năng hoàn toàn khác. Base URL `https://crm.pancake.vn/api`, xác thực bằng **`api_key`** truyền trong query param (KHÔNG phải Bearer header, KHÔNG phải `page_access_token` của Page). Multi-tenant theo **workspace**. Cung cấp 6 nhóm endpoint: **Records** (lead/account/contact), **Orders**, **Tickets**, **Sources**, **Tags** (CRM-scope), và **Webhook** realtime cho `record` event. Đây là pillar đầu tiên của cluster Pancake CRM — các bài sau sẽ cover từng endpoint sâu hơn.
+
+Hệ sinh thái Pancake gồm nhiều sản phẩm chuyên biệt cho từng khía cạnh vận hành kinh doanh — chat đa kênh (Pancake chat — đã có [cluster 6 bài API](/blog/gioi-thieu-pancake)), POS bán hàng, CRM quản lý khách hàng/sales pipeline, và một số sản phẩm khác. Mỗi sản phẩm có API + token riêng nhưng cùng share concept "page/workspace + dashboard quản trị".
+
+Bài này mở **pillar mới về Pancake CRM** — sản phẩm có chức năng **khác hoàn toàn** với chat (entity là lead/contact/order/ticket thay vì conversation/message). Nhiều dev mới integrate hay nhầm 2 sản phẩm dùng chung API, dẫn tới gọi sai endpoint, sai token. Bài này phân biệt rõ và hướng dẫn kết nối lần đầu.
+
+![Pancake CRM landing page — Biến dữ liệu khách hàng thành doanh thu bền vững](/static/images/blog/pancake-crm/hero.jpg)
+
+---
+
+## 1. Vị trí của CRM trong hệ sinh thái Pancake
+
+Pancake không phải là 1 sản phẩm duy nhất — đây là **bộ sản phẩm (suite)** phục vụ vận hành shop/doanh nghiệp, mỗi sản phẩm tách biệt về dữ liệu và API:
+
+| Sản phẩm | Chức năng chính | Endpoint API | Bài viết |
+|---|---|---|---|
+| **Pancake (chat đa kênh)** | Quản lý chat từ FB Messenger, Instagram, Zalo, Web chat — gắn tag, assign nhân viên, gửi reply | `pages.fm/api/public_api/v1` (hoặc `/v2`) | [Cluster 6 bài](/blog/gioi-thieu-pancake) |
+| **Pancake CRM** | Sales pipeline + customer DB — lead/account/contact/order/ticket, attribution, báo cáo doanh số | `crm.pancake.vn/api` | Bài này (pillar) |
+| **Pancake POS** | Bán hàng tại quầy + đồng bộ kho | (API riêng) | Sẽ cover sau |
+
+Trong bài này tập trung vào **CRM** — sản phẩm có chức năng và data model **khác hoàn toàn** với chat:
+
+| Tiêu chí | **Pancake (chat)** | **Pancake CRM** |
+|---|---|---|
+| **Trọng tâm** | Hội thoại realtime với khách qua nhiều kênh | Sales funnel + customer 360° view |
+| **Entity chính** | `conversation`, `customer`, `message`, `page` | `lead`, `account`, `contact`, `order`, `ticket` |
+| **Auth** | `page_access_token` (per-page) | `api_key` (per-workspace) |
+| **Base URL** | `pages.fm/api/public_api/v1` hoặc `/v2` | `crm.pancake.vn/api` |
+| **Auth location** | Query param `?page_access_token=...` | Query param `?api_key=...` |
+| **Concept tổ chức** | 1 page = 1 fanpage FB | 1 workspace = 1 đơn vị nội bộ |
+| **Webhook event** | `new_message`, `conversation_updated`... | `record` (CRUD record change) |
+| **Doc chính thức** | [developer.pancake.biz](https://developer.pancake.biz/) | [crm.pancake.vn/developers](https://crm.pancake.vn/developers/) |
+
+### Khi nào dùng sản phẩm nào?
+
+- **Chỉ Pancake chat** — shop nhỏ chỉ cần reply chat khách, chưa cần pipeline sales phức tạp
+- **Chỉ Pancake CRM** — team sales B2B làm lead/deal/order, không có flow chat trực tiếp với khách
+- **Cả 2 song song** — phổ biến nhất với shop bán hàng ở VN: Pancake chat quản hội thoại thời gian thực, CRM quản đơn hàng + lead funnel + báo cáo. Có thể tự build integration đẩy data chat → CRM (sẽ có bài tutorial riêng trong cluster).
+
+> [!TIP]
+> Nếu bạn đã quen với cluster Pancake chat (xem [bài giới thiệu](/blog/gioi-thieu-pancake) và [hướng dẫn webhook + reply](/blog/pancake-webhook-va-api-gui-tin-nhan)), pattern của CRM API rất tương tự về mặt design (REST, query-param auth, webhook async). Chỉ khác về entity, base URL và token. Học 1 cluster xong sẽ ramp-up cluster còn lại rất nhanh — đây là lợi thế chung của hệ sinh thái Pancake.
+
+---
+
+## 2. Tính năng nổi bật của Pancake CRM
+
+Trước khi đi vào API, hiểu sản phẩm làm gì sẽ giúp bạn map endpoint với use case thực tế:
+
+### 2.1. Tập trung dữ liệu khách hàng đa kênh
+
+Pancake CRM thu thập lead từ **Facebook, Instagram, Zalo, TikTok, Website, Shopee, Google Ads...** vào 1 nền tảng duy nhất. Mỗi lead/contact có pipeline trạng thái (Lead mới → Đang liên hệ → Đang chăm sóc → Đóng deal), gắn nguồn, tag, priority để team sales follow up theo thứ tự ưu tiên.
+
+![Tập trung dữ liệu khách hàng đa kênh + tối ưu hiệu suất bán hàng](/static/images/blog/pancake-crm/features-data.jpg)
+
+→ Liên quan API: **Records** (lead/account/contact), **Sources** (attribution kênh), **Tags** (phân loại). Bài Records CRUD sẽ cover sâu hơn pattern sync lead từ form landing page về CRM.
+
+### 2.2. Automation chăm sóc + Conversion API quảng cáo
+
+CRM có **workflow automation no-code** trong dashboard: trigger khi khách thực hiện hành động → tự gửi email/SMS/ZNS/thông báo cho sales. Bổ sung **Conversion API** đẩy event chuyển đổi từ CRM về Facebook/TikTok Ads → tối ưu cost-per-conversion (giảm chi phí quảng cáo).
+
+![Automation chăm sóc khách hàng + tích hợp Conversion API](/static/images/blog/pancake-crm/features-automation.jpg)
+
+→ Liên quan API: **Webhook** (trigger từ event record change), **Records** (đọc state để fire automation). Lưu ý: phần automation no-code ở dashboard không expose hết qua API — chỉ event trigger.
+
+### 2.3. Phù hợp đa ngành
+
+Pancake CRM được dùng cho nhiều ngành đặc thù: **Bất động sản** (quản lý lịch xem nhà), **TMĐT** (lịch sử mua, ưu đãi cá nhân hoá), **Y tế** (giảm tỉ lệ bệnh nhân bỏ hẹn), **Du lịch** (booking lifecycle + chăm sóc sau tour).
+
+![Pancake CRM ứng dụng cho các ngành: BĐS, TMĐT, Y tế, Du lịch](/static/images/blog/pancake-crm/industries.jpg)
+
+→ Liên quan API: **Orders** (đơn hàng / booking), **Tickets** (task chăm sóc / hẹn lại), **Records** (lưu thông tin khách).
+
+> [!TIP]
+> Nếu shop bạn chưa biết bắt đầu từ đâu, đăng ký dùng thử dashboard CRM trước → hiểu mental model entity (lead vs contact vs account) → mới integrate qua API. Build pipeline API mà không hiểu UX của Pancake CRM dễ design schema lệch với cách user thật sự dùng.
+
+---
+
+## 3. Workspace — concept đa tenant của Pancake CRM
+
+Khác với Pancake chat (1 token = 1 fanpage), Pancake CRM tổ chức theo **workspace**:
+
+- **Workspace** = 1 đơn vị isolation. Mỗi workspace có riêng: users, records, orders, tickets, tags, settings, api_key.
+- 1 user có thể được mời vào **nhiều workspace** với role khác nhau (admin / member).
+- Toàn bộ URL endpoint đều có dạng `/workspaces/{workspace_id}/{resource}/...` → workspace_id là path param bắt buộc.
+
+Ví dụ thực tế:
+- Công ty ABC có 1 workspace cho team Sales VN, 1 workspace riêng cho chi nhánh nước ngoài
+- Mỗi workspace có lead pipeline + order pipeline riêng
+- Reports không chéo giữa các workspace
+
+**Lấy `workspace_id`**: vào dashboard CRM → URL bar có dạng `crm.pancake.vn/workspaces/{workspace_id}/...` — copy phần ID đó.
+
+---
+
+## 4. Lấy api_key
+
+`api_key` là khoá xác thực **per-workspace**. Cách lấy:
+
+1. Vào dashboard Pancake CRM → workspace muốn integrate
+2. **Cài đặt → Công cụ (Tools)** → mục **API key** (cần quyền admin)
+3. Bấm **Tạo API key mới** → đặt tên gợi nhớ (vd: "n8n integration", "Internal sync script")
+4. Copy ngay — Pancake có thể không cho xem lại token sau khi đóng modal
+5. Lưu vào secret manager (1Password, Bitwarden, `.env`)
+
+### Cách dùng — query param
+
+```
+?api_key=YOUR_API_KEY_HERE
+```
+
+> [!WARNING]
+> `api_key` truyền dạng **query param**, KHÔNG phải header `Authorization: Bearer`. Đây là điểm khác biệt với phần lớn REST API hiện đại. Lưu ý:
+> - **Logs server thường log full URL** — api_key sẽ lộ trong access log nếu không strip
+> - **Không paste URL kèm api_key** vào Slack/Telegram/Notion public
+> - **CDN/proxy có thể cache URL** kèm api_key → leak qua cache
+> - Khuyến nghị: setup log scrubber strip query `api_key=` trước khi ghi disk
+
+> [!IMPORTANT]
+> `api_key` cho phép **toàn quyền** đọc/sửa/xoá mọi record trong workspace — bao gồm thông tin khách hàng nhạy cảm (phone, email, địa chỉ, lịch sử mua). Đối xử như password root:
+> - KHÔNG commit vào git
+> - KHÔNG share qua kênh không mã hoá
+> - KHÔNG để trong code FE (browser sẽ thấy)
+> - Rotation định kỳ (3-6 tháng/lần)
+> - Tách api_key riêng cho mỗi integration (n8n, internal sync, BI tool...) — dễ revoke khi cần
+
+---
+
+## 5. Test connection — request đầu tiên
+
+Verify api_key + workspace_id hoạt động bằng cách gọi endpoint **list records** đơn giản nhất:
+
+```bash
+curl -G "https://crm.pancake.vn/api/workspaces/$WORKSPACE_ID/lead/records" \
+  --data-urlencode "api_key=$API_KEY"
+```
+
+### Response thành công (HTTP 200)
+
+```json
+{
+  "cursor": "eyJwYWdlIjoxfQ==",
+  "entries": [
+    {
+      "id": "lead_uuid_1",
+      "name": "Nguyễn Văn A",
+      "phone": "0901234567",
+      "email": "nva@example.com",
+      "created_at": "2026-06-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+### Common errors khi setup lần đầu
+
+| HTTP | Nguyên nhân thường gặp | Cách fix |
+|---|---|---|
+| **401 Unauthorized** | api_key sai/đã revoke | Tạo lại api_key trong Settings → Tools |
+| **403 Forbidden** | api_key không có quyền truy cập workspace này | Verify api_key thuộc đúng workspace_id, hoặc user thiếu role |
+| **404 Not Found** | workspace_id sai, hoặc `table_name` không hợp lệ (chỉ `lead`/`account`/`contact`) | Kiểm tra URL trong dashboard, dùng đúng table_name |
+| **5xx** | Pancake side issue | Retry với exponential backoff, check status |
+
+---
+
+## 6. Tổng quan 6 nhóm endpoint
+
+| Nhóm | Endpoint mẫu | Use case |
+|---|---|---|
+| **Records** | `GET /workspaces/{ws}/lead/records`<br/>`POST /workspaces/{ws}/lead/records` (upsert) | Sync lead từ form landing page, từ FB ad, từ CSV import |
+| **Orders** | `POST /workspaces/{ws}/orders`<br/>`GET /workspaces/{ws}/orders` (filter theo deal) | Tạo đơn hàng từ web shop, từ Pancake chat, payment tracking |
+| **Tickets** | `POST /workspaces/{ws}/tickets`<br/>`PUT /workspaces/{ws}/tickets/{id}` | Task/issue tracking — auto-tạo ticket từ keyword complaint |
+| **Sources** | `GET /workspaces/{ws}/sources` | Liệt kê nguồn lead (FB ad, Zalo, organic, referral) cho attribution |
+| **Tags** | `GET /workspaces/{ws}/tags` | Tag CRM (KHÁC tag conversation của Page) — phân loại lead/order |
+| **Webhook** | Event `record` | Realtime sync mọi thay đổi record về hệ thống nội bộ |
+
+3 record types được hỗ trợ qua Records API: `lead`, `account`, `contact` — tương đương standard CRM (lead = chưa qualified, contact = cá nhân đã verified, account = công ty/tổ chức).
+
+---
+
+## 7. Webhook overview
+
+Pancake CRM có webhook **realtime** push HTTP POST tới endpoint bạn config mỗi khi có thay đổi record. Setup:
+
+1. Vào workspace → Settings → Tools → tab **Webhook - API**
+2. Nhập URL endpoint của bạn (phải HTTPS public)
+3. Pancake test verify, nếu OK → save
+
+### Event types
+
+Hiện tại chỉ có 1 event: **`record`** — fire khi bất kỳ record (lead/account/contact/order/ticket) bị CRUD.
+
+### Suspend policy ⚠
+
+Pancake CRM **tự động suspend** webhook nếu trong **30 phút** có:
+- **Error rate vượt 80%** (trả response ngoài 2xx), VÀ
+- **Số request fail ≥ 300**
+
+Khi suspend, webhook ngừng push event cho tới khi bạn re-enable thủ công trong dashboard.
+
+### Best practices (giống pattern webhook Pancake chat)
+
+- **Trả HTTP 200 nhanh** (dưới 5 giây) sau khi nhận request
+- **Xử lý async** qua queue (Redis/SQS) — không xử lý trong handler
+- **Idempotent processing** — Pancake có thể retry, design code chấp nhận duplicate
+- **Monitor** uptime + error rate endpoint → alert sớm trước khi bị suspend
+
+Chi tiết pattern webhook production-grade đã có trong [bài Webhook & API gửi tin nhắn Pancake chat](/blog/pancake-webhook-va-api-gui-tin-nhan) — apply tương tự cho CRM webhook.
+
+---
+
+## 8. Phân biệt CRM tags vs Pancake chat tags
+
+Cả 2 sản phẩm đều có khái niệm "tag" nhưng khác nhau hoàn toàn về scope và schema:
+
+| | **Pancake chat tag** (conversation tag) | **CRM tag** (record tag) |
+|---|---|---|
+| **Scope** | Per-page | Per-workspace |
+| **ID type** | Integer (0, 1, 2...) | UUID |
+| **Field** | `id`, `text`, `color`, `lighten_color` | `id`, `name`, `description`, `color`, `background_color`, `workspace_id` |
+| **Gắn vào** | Conversation (chat) | Record (lead/account/contact) |
+| **API endpoint** | `POST /pages/{page_id}/conversations/{id}/tags` | (CRM tag — sẽ cover ở bài Records sau) |
+| **Tài liệu** | Xem [bài Tag/Assign workflow](/blog/quan-ly-hoi-thoai-pancake-api-tag-assign) | Tài liệu CRM riêng |
+
+**Không có cross-sync tự động** giữa 2 hệ tag — vì 2 sản phẩm tách biệt về data. Nếu cần tag "Đặt hàng" xuất hiện ở cả Pancake chat và CRM, phải tự build sync layer (thường qua webhook → middleware).
+
+---
+
+## 9. Pitfalls thường gặp khi mới integrate
+
+| Triệu chứng | Nguyên nhân | Cách fix |
+|---|---|---|
+| 401 dù api_key copy đúng | Nhầm `api_key` (CRM) với `page_access_token` (Page) | Kiểm tra: token CRM lấy từ `crm.pancake.vn`, token Page từ dashboard FB page |
+| 404 endpoint | Nhầm base URL — gọi `pages.fm/api/...` thay vì `crm.pancake.vn/api/...` | Verify URL prefix `https://crm.pancake.vn/api` |
+| 403 workspace permission | Nhầm `workspace_id` với `page_id` (Page) | `workspace_id` là UUID lấy từ URL CRM dashboard, không liên quan FB page_id |
+| api_key bị leak trong logs | Server log full URL kèm query | Setup log scrubber strip `api_key=` query param trước khi ghi |
+| Webhook bị suspend không biết | Không monitor uptime endpoint | Setup health-check + alert; check Settings → Webhook mỗi tuần |
+| `table_name` invalid | Pass tên không hỗ trợ | Chỉ hợp lệ `lead`, `account`, `contact` cho Records endpoint |
+
+---
+
+## 10. FAQ
+
+**Q: Pancake chat và Pancake CRM dùng chung api/token được không?**
+
+A: **Không.** Đây là 2 sản phẩm khác nhau trong hệ sinh thái Pancake, mỗi sản phẩm có hệ thống auth riêng: chat dùng `page_access_token` (per-page), CRM dùng `api_key` (per-workspace). Phải lấy 2 token riêng nếu cần integrate cả 2 sản phẩm.
+
+**Q: Phải mua subscription riêng cho CRM không?**
+
+A: **Có.** Pancake CRM cần mua **gói cước riêng**, không nằm trong gói Pancake chat hay các sản phẩm khác trong hệ sinh thái. Liên hệ **Pancake support** để được tư vấn gói phù hợp với quy mô team + nhu cầu trước khi build integration.
+
+**Q: Pancake CRM có hỗ trợ migration từ HubSpot/Salesforce không?**
+
+A: Hiện tại Pancake CRM **không có connector chính thức** cho HubSpot/Salesforce. Bạn cần tự build (export CSV từ HubSpot/Salesforce → format chuẩn Pancake → POST Records upsert qua API). Bài sau về Records sẽ có pattern bulk import chi tiết.
+
+**Q: Rate limit của Pancake CRM API là bao nhiêu?**
+
+A: Tài liệu chính thức hiện không nêu con số cụ thể. Khuyến nghị throttle conservative: 5-10 req/giây/workspace, exponential backoff khi gặp 429. Test với volume thực tế trước khi production.
+
+**Q: Webhook có HMAC signature verification không?**
+
+A: Tài liệu webhook hiện tại không document cơ chế signature. Khuyến nghị tạm thời: dùng **secret token trong URL path** (vd: `/webhook/pancake/<random_secret>`) và verify path trước khi process. Liên hệ Pancake support nếu cần HMAC chính thức.
+
+**Q: Có sandbox / test environment riêng không?**
+
+A: Không có sandbox riêng. Best practice: tạo workspace test riêng với data giả, lấy api_key riêng cho test, switch sang production workspace khi go-live.
+
+**Q: Custom fields có support không (field tự định nghĩa cho lead/contact)?**
+
+A: **Có**, Pancake CRM hỗ trợ custom fields cấu hình trong dashboard. Khi gọi API Records, custom fields xuất hiện trong response như field bình thường. Bài Records CRUD sẽ cover schema chi tiết.
+
+---
+
+## 11. Tổng kết
+
+- **Pancake CRM là 1 sản phẩm trong hệ sinh thái Pancake**, chức năng khác hoàn toàn với Pancake chat — auth riêng (`api_key` vs `page_access_token`), base URL riêng (`crm.pancake.vn` vs `pages.fm`).
+- **Workspace** là đơn vị isolation — `workspace_id` là path param bắt buộc trong mọi endpoint.
+- **`api_key` truyền query param** — cẩn thận log leak; rotation định kỳ; 1 api_key cho 1 integration.
+- **6 nhóm endpoint**: Records (lead/account/contact), Orders, Tickets, Sources, Tags, Webhook.
+- **Webhook event `record`** + suspend policy nghiêm (80% error / 300 fails trong 30 min).
+- **Pattern webhook production-grade**: trả 200 nhanh, async queue, idempotent — giống webhook Pancake chat.
+
+Bài tiếp theo trong cluster sẽ đi sâu vào **Records CRUD (lead/account/contact)** — endpoint dùng nhiều nhất.
+
+---
+
+## Bài viết liên quan
+
+### Cluster Pancake CRM (mới)
+
+- Bài này — Giới thiệu Pancake CRM API (pillar)
+- Roadmap: Records CRUD, Orders, Tickets, Webhook setup, Pancake chat ↔ CRM integration tutorial
+
+### Cluster Pancake chat (đã có)
+
+- [Giới thiệu Pancake — Nền tảng quản lý chat đa kênh](/blog/gioi-thieu-pancake) — sản phẩm Page tổng quan
+- [Hướng dẫn kết nối Webhook & API gửi tin nhắn trên Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan) — base về Page Access Token + webhook
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api)
+- [Page Customers API — Đồng bộ khách hàng vào CRM](/blog/dong-bo-khach-hang-pancake-api-page-customers)
+- [3 phương án truy xuất data Pancake](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm)
+- [Quản lý hội thoại Pancake API — Tag, Assign, Mark Read/Unread](/blog/quan-ly-hoi-thoai-pancake-api-tag-assign)
+
+### Tài liệu chính thức
+
+- [Pancake CRM Developer Docs](https://crm.pancake.vn/developers/) — OpenAPI spec đầy đủ
+- [Pancake chat Developer Docs](https://developer.pancake.biz/) — cluster chat
+
+---
+
+*Last updated: 2026-06-17. Phiên bản API: Pancake CRM 2.0.0. Tham khảo OpenAPI spec để verify mọi thay đổi.*
