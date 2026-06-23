@@ -1,0 +1,466 @@
+---
+title: "Pancake CRM Records CRUD API — Managing lead / account / contact"
+date: "2026-06-23"
+lastmod: "2026-06-23"
+language: "en"
+translationKey: "pancake-crm-records"
+summary: "Complete reference for the 4 Records endpoints in the Pancake CRM API — list (with powerful JSON filter + cursor pagination), upsert (id present = update, omit = create), bulk delete, get single. Supports the 3 table types lead/account/contact, with 9 filter operators and common pitfalls like the 422 LEAD_CANNOT_UPDATE_FROM_CANCEL error."
+tags: ["Pancake CRM", "API", "Records", "Lead", "Contact", "Account", "Workspace", "api_key", "Pancake developer", "CRUD"]
+---
+
+# Pancake CRM Records CRUD API — Managing lead / account / contact
+
+> **TL;DR:** Pancake CRM exposes **4 Records endpoints** for the 3 table types `lead` / `account` / `contact`: `GET /workspaces/{ws}/{table}/records` (list with JSON filter + cursor pagination), `POST /workspaces/{ws}/{table}/records` (**upsert** — `id` present = update, `id` omitted = create; there is NO separate create/update endpoint), `DELETE /workspaces/{ws}/{table}/records?record_ids[]=...` (bulk delete), and `GET /workspaces/{ws}/record/{id}` (single — different URL pattern from list). The filter supports **9 operators** and AND/OR logic. Watch out for the special **422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** error — you can't update a lead that has been canceled/converted/merged.
+
+Once you've set up [the Pancake CRM API + api_key](/en/blog/introducing-pancake-crm-api), the most-used endpoint group is **Records** — where leads/contacts/accounts for the workspace live. This post covers all 4 CRUD endpoints, the full filter JSON syntax, and the common pitfalls you'll hit when integrating.
+
+---
+
+## 1. The 3 record types — which to use when?
+
+Pancake CRM follows the standard industry CRM data model, splitting 3 entity types with different purposes:
+
+| Table | Represents | When to create | Special field |
+|---|---|---|---|
+| **`lead`** | Unqualified prospects | Landing page form submits, FB ad clicks, list imports | `interested_product[]` — products the customer is interested in |
+| **`contact`** | A verified individual with real contact info | After a lead is qualified, or a B2C end customer | Standard contact fields |
+| **`account`** | An organization / company (B2B) | When you sell to companies — one account can link to many contacts | Standard account fields |
+
+> [!TIP]
+> **Lead → Contact**: a common lifecycle — when a sales rep reaches a lead and confirms it's real, the CRM dashboard lets you convert lead → contact (keeping data, swapping entity type). The current API **only operates on one record in one table at a time** — the convert action is UI-only and not yet exposed via API (per docs at the time of writing).
+
+### Real-world scenarios
+
+- **B2C shop** (cosmetics, fashion): primarily uses `lead` (for ads) + `contact` (paying customers). `account` is not needed.
+- **B2B agency** (marketing, dev studios): uses `account` (the client company) + `contact` (people inside the company). One account, many contacts.
+- **Multi-channel SaaS**: uses all three — `lead` from FB ads → `contact` on demo call → `account` when onboarding the org.
+
+---
+
+## 2. Setup recap
+
+All endpoints below need:
+- **`api_key`** — query param (see [CRM intro section 4](/en/blog/introducing-pancake-crm-api#4-generating-the-api_key))
+- **`workspace_id`** — path param (see [section 3](/en/blog/introducing-pancake-crm-api#3-workspace--pancake-crms-multi-tenant-concept))
+- **`table_name`** — path param, valid values: `lead` / `account` / `contact` (INVALID: `customer`, `user`, ...)
+
+> [!IMPORTANT]
+> All 4 Records endpoints **only support the 3 table types above**. Passing `table_name=customer` or any other name → 404. Pancake's docs don't expose other dashboard table types over API.
+
+---
+
+## 3. `GET /records` — list with cursor pagination
+
+```
+GET https://crm.pancake.vn/api/workspaces/{workspace_id}/{table_name}/records?api_key={key}
+```
+
+| Parameter | Location | Description |
+|---|---|---|
+| `workspace_id` | Path | Workspace UUID |
+| `table_name` | Path | `lead` / `account` / `contact` |
+| `api_key` | Query | Per-workspace API key |
+| `filter` | Query | JSON-encoded filter object (see section 4) |
+| `view_id` | Query | UUID of a view saved in the dashboard, or `all` |
+| `cursor` | Query | Cursor from the previous response (pagination) |
+
+### cURL example — list all leads
+
+```bash
+curl -G "https://crm.pancake.vn/api/workspaces/$WORKSPACE_ID/lead/records" \
+  --data-urlencode "api_key=$API_KEY" \
+  --data-urlencode "view_id=all"
+```
+
+### Response shape
+
+```json
+{
+  "cursor": "eyJwYWdlIjoyfQ==",
+  "entries": [
+    {
+      "id": "a1b2c3d4-...",
+      "name": "John Doe",
+      "phone_number": "+1234567890",
+      "email": "john@example.com",
+      "birthday": "1990-05-12T00:00:00Z",
+      "full_address": "126 Hang Trong, Hoan Kiem Ward, Hanoi, Vietnam",
+      "pancake_tags": ["104943019063372_11"],
+      "source": [-11],
+      "owner": ["user_uuid_1"],
+      "created_on": "2026-06-20T10:30:00Z",
+      "modified_on": "2026-06-22T14:15:00Z",
+      "interested_product": ["Serum HA", "Cream B5"]
+    }
+  ]
+}
+```
+
+### Cursor pagination
+
+Pancake CRM Records uses **cursor-based pagination** (same pattern as [the chat list conversations endpoint](/en/blog/get-pancake-conversations-list-api#4-pagination-with-last_conversation_id-cursor-based)):
+
+- First request: do NOT pass `cursor` → response returns the next-page cursor
+- Subsequent requests: pass the `cursor` from the previous response → get the next page
+- End of data: response returns `entries: []` or `cursor: null`/missing → stop the loop
+
+```bash
+# First request
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY"
+# → {"cursor": "abc123...", "entries": [...]}
+
+# Next request
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "cursor=abc123..."
+```
+
+> [!WARNING]
+> The response has **no `total_entries` or `page_count`** field — you don't know up front how many records exist. The only pattern: loop until `entries` is empty. If your UI needs a total, you have to count by looping through everything.
+
+---
+
+## 4. Filter — JSON query with 9 operators
+
+`filter` is the **most powerful** parameter of the list endpoint — JSON-encoded, supporting AND/OR logic + 9 operators.
+
+### Base structure
+
+```json
+{
+  "search_all": "0972273341",
+  "is_group": false,
+  "fields": [
+    {
+      "field_name": "phone_number",
+      "type": "$having_value",
+      "value": null,
+      "is_filter_exclude": false
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `search_all` | string | Full-text search across all text/phone/number fields. Use this for a "search box" style lookup |
+| `is_group` | boolean | `true` = OR between conditions in `fields[]`; `false` (default) = AND |
+| `fields[]` | array | List of filter conditions |
+| `fields[].field_name` | string | Field name: `phone_number`, `name`, `email`, etc. |
+| `fields[].type` | string | Operator (see below) |
+| `fields[].value` | any | Value to compare against — depends on the operator |
+| `fields[].is_filter_exclude` | boolean | `true` = NOT logic (negate the condition) |
+
+### 9 operators
+
+| Operator | Description | `value` type |
+|---|---|---|
+| `$having_value` | Field has a value (not empty) | `null` (omit) |
+| `$having_no_value` | Field is empty | `null` (omit) |
+| `$enter_value` | Field equals/contains `value` | single |
+| `$select_multi` | Field matches any value in the array | array |
+| `$date_time` | Field is in the `[from, to]` range | array of 2 timestamps |
+| `$greater_than` | Numeric "greater than" | string number |
+| `$less_than` | Numeric "less than" | string number |
+| `$greater_than_equal` | Numeric "greater than or equal" | string number |
+| `$less_than_equal` | Numeric "less than or equal" | string number |
+| `$association` | Field references one of the record IDs in `value` | array of UUIDs |
+| `$duplicate` | Field value is duplicated across records | `null` |
+
+### Example 1 — Find leads that have a phone
+
+```bash
+FILTER='{"fields":[{"field_name":"phone_number","type":"$having_value"}]}'
+
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "filter=$FILTER"
+```
+
+### Example 2 — Leads with phone OR not yet contacted (OR instead of AND)
+
+```bash
+FILTER='{
+  "is_group": true,
+  "fields": [
+    {"field_name":"phone_number","type":"$having_value"},
+    {"field_name":"last_contact","type":"$having_no_value"}
+  ]
+}'
+```
+
+### Example 3 — Leads from FB ad sources (source ID 10 or 20)
+
+```bash
+FILTER='{"fields":[{"field_name":"source","type":"$select_multi","value":[10,20]}]}'
+```
+
+### Example 4 — Duplicate leads by phone (find duplicate phone numbers)
+
+```bash
+FILTER='{"fields":[{"field_name":"phone_number","type":"$duplicate"}]}'
+```
+
+### Example 5 — Find leads NOT from FB (NOT)
+
+```bash
+FILTER='{
+  "fields": [
+    {
+      "field_name": "source",
+      "type": "$select_multi",
+      "value": [10, 20],
+      "is_filter_exclude": true
+    }
+  ]
+}'
+```
+
+> [!TIP]
+> **URL-encode the JSON filter** when passing as a query string. In cURL use `--data-urlencode` (as in the examples above) so the tool handles encoding. In code: `encodeURIComponent(JSON.stringify(filter))`.
+
+---
+
+## 5. `view_id` — pre-defined dashboard views
+
+In the CRM dashboard, users can save a **view** with a combination of filter + sort + display columns (e.g. "Hot leads this week", "Contacts not followed up in 7 days"). Each view has a UUID.
+
+```bash
+# Get the "all" view — includes every record with no filter
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "view_id=all"
+
+# Get records using a saved view UUID from the dashboard
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "view_id=550e8400-e29b-41d4-a716-446655440000"
+```
+
+Use case: the sales team already set up a view "Hot Lead — has phone + not closed in 14 days" in the dashboard; your BI dashboard code just passes that `view_id` → no need to re-implement the filter logic, **and stays in sync with the UI**.
+
+---
+
+## 6. `POST /records` — Upsert pattern
+
+```
+POST https://crm.pancake.vn/api/workspaces/{workspace_id}/{table_name}/records?api_key={key}
+Content-Type: application/json
+```
+
+### Request body — Record schema
+
+```json
+{
+  "id": "a1b2c3d4-...",
+  "name": "John Doe",
+  "phone_number": "+1234567890",
+  "email": "john@example.com",
+  "birthday": "1990-05-12",
+  "full_address": "126 Hang Trong, Hoan Kiem Ward, Hanoi, Vietnam",
+  "pancake_tags": ["tag_id_1", "tag_id_2"],
+  "source": [10],
+  "owner": ["user_uuid"],
+  "interested_product": ["Serum HA"]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `id` | – | UUID. **Present** = update that record; **absent** = create a new one |
+| `name` | ✓ | Record name — required even on update |
+| `phone_number` | – | Phone number |
+| `email` | – | Email |
+| `birthday` | – | ISO 8601 format (`YYYY-MM-DD`) |
+| `full_address` | – | Full address. Suggested VN format: `Street number + Street name, Ward, District, City/Province, Country` |
+| `pancake_tags[]` | – | Array of tag IDs |
+| `source[]` | – | Array of integer IDs from the Sources API |
+| `owner[]` | – | Array of user UUIDs that own the record |
+| `interested_product[]` | – | **ONLY applies to `lead`** — products the customer is interested in. Account/contact don't have this field |
+
+### Create — omit `id`
+
+```bash
+curl -X POST "https://crm.pancake.vn/api/workspaces/$WS/lead/records?api_key=$KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "phone_number": "+1234567890",
+    "email": "john@example.com",
+    "source": [10]
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a1b2c3d4-newly-generated",
+    "name": "John Doe",
+    "phone_number": "+1234567890",
+    "...": "..."
+  }
+}
+```
+
+### Update — include `id`
+
+```bash
+curl -X POST "https://crm.pancake.vn/api/workspaces/$WS/lead/records?api_key=$KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "a1b2c3d4-...",
+    "name": "John Doe (verified)",
+    "phone_number": "+1987654321"
+  }'
+```
+
+> [!WARNING]
+> **Error 422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** — you cannot update a lead that's in **canceled / converted / merged** state. This is a hard business rule — even admins can't bypass it via API. Handling pattern: check lead status before updating, or catch the 422 and log that the lead is already closed.
+
+### Other errors
+
+- **403 Forbidden** — your `api_key` lacks permission for this table. Check the role + workspace ownership.
+
+---
+
+## 7. `DELETE` — bulk delete
+
+```
+DELETE https://crm.pancake.vn/api/workspaces/{workspace_id}/{table_name}/records?api_key={key}&record_ids[]={id1}&record_ids[]={id2}
+```
+
+`record_ids[]` is passed as a **repeated query string** (NOT a body):
+
+```bash
+curl -X DELETE "https://crm.pancake.vn/api/workspaces/$WS/lead/records?api_key=$KEY" \
+  --data-urlencode "record_ids[]=uuid1" \
+  --data-urlencode "record_ids[]=uuid2" \
+  --data-urlencode "record_ids[]=uuid3" \
+  -G
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "fallback": "success_only"
+}
+```
+
+> [!IMPORTANT]
+> **Test with a single record before bulk-deleting** — there's no dry-run mode. Whether delete is soft or hard isn't clearly documented; log the deleted `record_ids[]` list so you can recover if needed.
+
+---
+
+## 8. `GET /record/{id}` — single record
+
+The URL pattern is **different** from list (singular `record/` instead of `records`), and `table_name` is a **query param**:
+
+```
+GET https://crm.pancake.vn/api/workspaces/{workspace_id}/record/{record_id}?api_key={key}&table_name={table}
+```
+
+```bash
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/record/$RECORD_ID" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "table_name=lead"
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a1b2c3d4-...",
+    "name": "John Doe",
+    "...": "..."
+  }
+}
+```
+
+Use case: when clicking a row in your internal dashboard → load full details via this endpoint (faster than filtering in the list).
+
+---
+
+## 9. Common pitfalls
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| 404 endpoint | `table_name` is not `lead`/`account`/`contact` | Verify table_name is valid |
+| 401 / 403 | `api_key` is wrong or lacks workspace permission | Regenerate the key in Settings → Tools |
+| 422 `LEAD_CANNOT_UPDATE_FROM_CANCEL` | The lead is canceled / converted / merged | Check status first, or catch the error + log |
+| Filter returns wrong data | Bad JSON filter syntax | Validate JSON; verify the operator name (`$having_value`, not `having_value`) |
+| `view_id` not found | Wrong UUID or the view was deleted from dashboard | Fall back to `view_id=all` |
+| `interested_product` doesn't save on account/contact | The field only applies to `lead` | Drop the field when POSTing `account`/`contact` |
+| `record_ids[]` doesn't delete | Passed as body instead of query string | Use query string with `record_ids[]` (the `[]` is part of the name) |
+| Single GET returns 404 | URL uses `records/` instead of `record/` (extra `s`), or missing `table_name` query | Check the URL pattern: `/record/{id}?table_name=...` |
+
+---
+
+## 10. FAQ
+
+**Q: Is there a bulk insert endpoint (POST many records at once)?**
+
+A: **No.** Pancake CRM only supports POSTing one record at a time. Bulk import = loop POST + throttle on the client side. Recommended pattern: sleep 100-200ms between requests, exponential backoff on 429/5xx.
+
+**Q: Is there built-in 2-way sync with HubSpot/Salesforce?**
+
+A: **No official connector.** Build it yourself via: HubSpot/Salesforce webhook → Pancake POST upsert + Pancake webhook → HubSpot/Salesforce API. See the [3 ways to extract Pancake data](/en/blog/3-ways-to-extract-pancake-data-into-your-crm) post for similar integration patterns (Pancake chat → CRM).
+
+**Q: Do custom fields (user-defined fields in the dashboard) appear in the response?**
+
+A: **Yes** — custom fields appear in the response with the names you set in the dashboard. The field schema in the docs only lists standard fields; for custom fields, GET a sample record to discover the actual schema for your workspace.
+
+**Q: What's the rate limit?**
+
+A: The official docs don't state a number. Recommended conservative throttle: **5-10 req/sec/workspace**, with exponential backoff on 429. Test with production-like volume before going live.
+
+**Q: What's the difference between `record` (singular) and `records` (plural) in the URL?**
+
+A: The URL convention isn't consistent:
+- `/records` (plural) = list / upsert / bulk delete
+- `/record/{id}` (singular) = get single
+
+Easy to confuse. When writing a wrapper class, define matching method names clearly.
+
+---
+
+## 11. Summary
+
+- **4 Records endpoints**: `GET /records` (list), `POST /records` (upsert), `DELETE /records` (bulk), `GET /record/{id}` (single — different URL)
+- **3 table types**: `lead` / `account` / `contact` — `customer` and other names are **invalid**
+- **Upsert pattern**: `id` present = update, `id` absent = create — no separate create/update endpoints
+- **Powerful JSON filter** with 9 operators + AND/OR + NOT — URL-encode when passing as a query
+- **`view_id`**: use a dashboard view UUID to keep filter logic in sync with the UI
+- **Special error 422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** — closed leads can't be updated, not even by admins
+- **Cursor pagination** — loop until `entries` is empty; no total count
+
+---
+
+## Related posts
+
+### Pancake CRM cluster
+
+- [Introducing the Pancake CRM API — pillar (auth, workspace, endpoint overview)](/en/blog/introducing-pancake-crm-api)
+- This post — Records CRUD (you are here)
+- Roadmap: Orders API, Tickets API, CRM Webhook, Pancake chat ↔ CRM integration
+
+### Pancake chat cluster (sister)
+
+- [Pancake Webhook & API Send Message Guide](/en/blog/pancake-webhook-and-api-send-message)
+- [Get Pancake Conversations List API](/en/blog/get-pancake-conversations-list-api) — cursor pagination pattern like Records
+- [3 Ways to Extract Pancake Data into Your CRM](/en/blog/3-ways-to-extract-pancake-data-into-your-crm) — integration pattern reference
+
+### Official documentation
+
+- [Pancake CRM Developer Docs](https://crm.pancake.vn/developers/) — OpenAPI spec
+
+---
+
+*Last updated: 2026-06-23. API version: Pancake CRM 2.0.0. Check the OpenAPI spec to verify any changes.*

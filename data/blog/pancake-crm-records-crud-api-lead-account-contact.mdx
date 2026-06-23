@@ -1,0 +1,466 @@
+---
+title: "Pancake CRM Records CRUD API — Quản lý lead / account / contact"
+date: "2026-06-23"
+lastmod: "2026-06-23"
+language: "vi"
+translationKey: "pancake-crm-records"
+summary: "Hướng dẫn chi tiết 4 endpoint Records của Pancake CRM API — list (với filter JSON mạnh + cursor pagination), upsert (id present = update, omit = create), bulk delete, get single. Hỗ trợ 3 table types lead/account/contact, kèm 9 filter operators và những pitfall thường gặp như lỗi 422 LEAD_CANNOT_UPDATE_FROM_CANCEL."
+tags: ["Pancake CRM", "API", "Records", "Lead", "Contact", "Account", "Workspace", "api_key", "Pancake developer", "CRUD"]
+---
+
+# Pancake CRM Records CRUD API — Quản lý lead / account / contact
+
+> **TL;DR:** Pancake CRM cung cấp **4 endpoint Records** cho 3 table types `lead` / `account` / `contact`: `GET /workspaces/{ws}/{table}/records` (list với filter JSON + cursor pagination), `POST /workspaces/{ws}/{table}/records` (**upsert** — có `id` = update, không `id` = create, KHÔNG có endpoint create/update riêng), `DELETE /workspaces/{ws}/{table}/records?record_ids[]=...` (bulk delete), và `GET /workspaces/{ws}/record/{id}` (single — URL pattern khác list). Filter hỗ trợ **9 operators** và logic AND/OR. Lỗi đặc biệt **422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** — không update được lead đã canceled/converted/merged.
+
+Sau khi đã setup [Pancake CRM API + api_key](/blog/gioi-thieu-pancake-crm-api), endpoint dùng nhiều nhất là **Records** — nơi quản lý lead/contact/account của workspace. Bài này cover đầy đủ 4 endpoint CRUD, filter JSON syntax đầy đủ, và những pitfall thường gặp khi mới integrate.
+
+---
+
+## 1. 3 record types — khi nào dùng cái nào?
+
+Pancake CRM theo data model CRM chuẩn industry, tách 3 loại entity với mục đích khác nhau:
+
+| Table | Đại diện | Khi nào tạo | Field đặc biệt |
+|---|---|---|---|
+| **`lead`** | Khách tiềm năng chưa qualified | Form landing page submit, FB ad click, import từ data list | `interested_product[]` — sản phẩm khách quan tâm |
+| **`contact`** | Cá nhân đã verified, có liên hệ thực | Sau khi lead được qualified, hoặc khách hàng cá nhân B2C | Standard contact fields |
+| **`account`** | Tổ chức / công ty (B2B) | Khi bán cho doanh nghiệp — 1 account có thể link nhiều contact | Standard account fields |
+
+> [!TIP]
+> **Lead → Contact**: lifecycle phổ biến — khi lead được sale liên lạc và xác nhận thật, dashboard CRM cho phép convert lead → contact (giữ data, đổi entity type). Endpoint API hiện tại **chỉ thao tác từng record trong table riêng** — convert là UI-only, chưa expose qua API (theo doc tại thời điểm viết).
+
+### Scenario thực tế
+
+- **Shop B2C** (mỹ phẩm, thời trang): dùng chủ yếu `lead` (cho ads) + `contact` (khách đã mua). `account` không cần.
+- **Agency B2B** (marketing, dev studio): dùng `account` (công ty khách) + `contact` (người liên hệ trong công ty). Mỗi account có nhiều contact.
+- **SaaS bán đa kênh**: dùng cả 3 — `lead` từ FB ad → `contact` khi demo call → `account` khi onboard org.
+
+---
+
+## 2. Setup nhắc lại
+
+Mọi endpoint trong bài cần:
+- **`api_key`** — query param (xem [bài CRM intro section 4](/blog/gioi-thieu-pancake-crm-api#4-lấy-api_key))
+- **`workspace_id`** — path param (xem [section 3](/blog/gioi-thieu-pancake-crm-api#3-workspace--concept-đa-tenant-của-pancake-crm))
+- **`table_name`** — path param, hợp lệ: `lead` / `account` / `contact` (KHÔNG hợp lệ: `customer`, `user`, ...)
+
+> [!IMPORTANT]
+> Cả 4 endpoint Records **chỉ hỗ trợ 3 table types** trên. Pass `table_name=customer` hay tên khác → 404. Pancake doc không document các table types khác qua API (mặc dù dashboard có).
+
+---
+
+## 3. `GET /records` — list với cursor pagination
+
+```
+GET https://crm.pancake.vn/api/workspaces/{workspace_id}/{table_name}/records?api_key={key}
+```
+
+| Tham số | Vị trí | Mô tả |
+|---|---|---|
+| `workspace_id` | Path | UUID workspace |
+| `table_name` | Path | `lead` / `account` / `contact` |
+| `api_key` | Query | API key per-workspace |
+| `filter` | Query | JSON-encoded filter object (xem section 4) |
+| `view_id` | Query | UUID view saved trong dashboard, hoặc `all` |
+| `cursor` | Query | Cursor từ response trước (pagination) |
+
+### cURL example — list toàn bộ lead
+
+```bash
+curl -G "https://crm.pancake.vn/api/workspaces/$WORKSPACE_ID/lead/records" \
+  --data-urlencode "api_key=$API_KEY" \
+  --data-urlencode "view_id=all"
+```
+
+### Response shape
+
+```json
+{
+  "cursor": "eyJwYWdlIjoyfQ==",
+  "entries": [
+    {
+      "id": "a1b2c3d4-...",
+      "name": "Nguyễn Văn A",
+      "phone_number": "0901234567",
+      "email": "nva@example.com",
+      "birthday": "1990-05-12T00:00:00Z",
+      "full_address": "Số 126 Hàng Trống, Phường Hoàn Kiếm, Hà Nội, Việt Nam",
+      "pancake_tags": ["104943019063372_11"],
+      "source": [-11],
+      "owner": ["user_uuid_1"],
+      "created_on": "2026-06-20T10:30:00Z",
+      "modified_on": "2026-06-22T14:15:00Z",
+      "interested_product": ["Serum HA", "Cream B5"]
+    }
+  ]
+}
+```
+
+### Cursor pagination
+
+Pancake CRM Records dùng **cursor-based pagination** (giống pattern [list conversations chat](/blog/lay-danh-sach-hoi-thoai-pancake-api#4-pagination-với-last_conversation_id-cursor-based)):
+
+- Lần đầu: KHÔNG truyền `cursor` → response trả về `cursor` của trang kế tiếp
+- Lần sau: truyền `cursor` từ response cũ → trả 1 trang nữa
+- Hết data: response trả `entries: []` hoặc `cursor: null`/missing → dừng loop
+
+```bash
+# Lần đầu
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY"
+# → {"cursor": "abc123...", "entries": [...]}
+
+# Lần sau
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "cursor=abc123..."
+```
+
+> [!WARNING]
+> Response **không có `total_entries` hay `page_count`** — bạn không biết trước có bao nhiêu records. Pattern duy nhất: loop tới khi `entries` rỗng. Nếu cần UI hiển thị tổng số, phải tự đếm bằng cách loop hết.
+
+---
+
+## 4. Filter — JSON query với 9 operators
+
+`filter` là tham số **mạnh nhất** của endpoint list — JSON-encoded, hỗ trợ logic AND/OR + 9 operators.
+
+### Cấu trúc gốc
+
+```json
+{
+  "search_all": "0972273341",
+  "is_group": false,
+  "fields": [
+    {
+      "field_name": "phone_number",
+      "type": "$having_value",
+      "value": null,
+      "is_filter_exclude": false
+    }
+  ]
+}
+```
+
+| Field | Loại | Mô tả |
+|---|---|---|
+| `search_all` | string | Full-text search trên mọi field text/phone/number. Dùng cho "search box" style |
+| `is_group` | boolean | `true` = OR giữa các điều kiện trong `fields[]`; `false` (mặc định) = AND |
+| `fields[]` | array | Danh sách điều kiện filter |
+| `fields[].field_name` | string | Tên field: `phone_number`, `name`, `email`, etc. |
+| `fields[].type` | string | Operator (xem dưới) |
+| `fields[].value` | any | Giá trị compare — tuỳ operator |
+| `fields[].is_filter_exclude` | boolean | `true` = NOT logic (negate condition) |
+
+### 9 operators
+
+| Operator | Mô tả | `value` type |
+|---|---|---|
+| `$having_value` | Field có giá trị (không empty) | `null` (omit) |
+| `$having_no_value` | Field rỗng | `null` (omit) |
+| `$enter_value` | Field bằng/contains `value` | single |
+| `$select_multi` | Field match bất kỳ giá trị trong mảng | array |
+| `$date_time` | Field nằm trong range `[from, to]` | array 2 timestamp |
+| `$greater_than` | Numeric "lớn hơn" | string number |
+| `$less_than` | Numeric "nhỏ hơn" | string number |
+| `$greater_than_equal` | Numeric "lớn hơn hoặc bằng" | string number |
+| `$less_than_equal` | Numeric "nhỏ hơn hoặc bằng" | string number |
+| `$association` | Field reference đến record IDs trong `value` | array UUID |
+| `$duplicate` | Field bị duplicate qua nhiều records | `null` |
+
+### Ví dụ 1 — Tìm lead có phone
+
+```bash
+FILTER='{"fields":[{"field_name":"phone_number","type":"$having_value"}]}'
+
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "filter=$FILTER"
+```
+
+### Ví dụ 2 — Lead có phone NHƯNG chưa được liên hệ (OR thay AND)
+
+```bash
+FILTER='{
+  "is_group": true,
+  "fields": [
+    {"field_name":"phone_number","type":"$having_value"},
+    {"field_name":"last_contact","type":"$having_no_value"}
+  ]
+}'
+```
+
+### Ví dụ 3 — Lead từ source FB ad (ID source 10 hoặc 20)
+
+```bash
+FILTER='{"fields":[{"field_name":"source","type":"$select_multi","value":[10,20]}]}'
+```
+
+### Ví dụ 4 — Lead duplicate theo phone (tìm phone trùng)
+
+```bash
+FILTER='{"fields":[{"field_name":"phone_number","type":"$duplicate"}]}'
+```
+
+### Ví dụ 5 — Tìm lead KHÔNG phải từ FB (NOT)
+
+```bash
+FILTER='{
+  "fields": [
+    {
+      "field_name": "source",
+      "type": "$select_multi",
+      "value": [10, 20],
+      "is_filter_exclude": true
+    }
+  ]
+}'
+```
+
+> [!TIP]
+> **URL-encode JSON filter** khi truyền qua query string. Trong cURL dùng `--data-urlencode` (như ví dụ trên) để tool tự encode. Trong code: `encodeURIComponent(JSON.stringify(filter))`.
+
+---
+
+## 5. `view_id` — pre-defined views từ dashboard
+
+Trong dashboard CRM, user có thể save **view** với combo filter + sort + columns hiển thị (vd: "Hot leads tuần này", "Contact chưa follow-up 7 ngày"). Mỗi view có UUID.
+
+```bash
+# Lấy view "all" — bao gồm mọi record không filter
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "view_id=all"
+
+# Lấy theo view UUID đã saved trong dashboard
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/lead/records" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "view_id=550e8400-e29b-41d4-a716-446655440000"
+```
+
+Use case: ở dashboard sales team đã setup view "Hot Lead — phone đầy đủ + chưa close trong 14 ngày", code BI dashboard chỉ cần truyền `view_id` đó → không phải re-implement filter logic, **đồng bộ với UI**.
+
+---
+
+## 6. `POST /records` — Upsert pattern
+
+```
+POST https://crm.pancake.vn/api/workspaces/{workspace_id}/{table_name}/records?api_key={key}
+Content-Type: application/json
+```
+
+### Request body — Record schema
+
+```json
+{
+  "id": "a1b2c3d4-...",
+  "name": "Nguyễn Văn A",
+  "phone_number": "0901234567",
+  "email": "nva@example.com",
+  "birthday": "1990-05-12",
+  "full_address": "Số 126 Hàng Trống, Phường Hoàn Kiếm, Hà Nội, Việt Nam",
+  "pancake_tags": ["tag_id_1", "tag_id_2"],
+  "source": [10],
+  "owner": ["user_uuid"],
+  "interested_product": ["Serum HA"]
+}
+```
+
+| Field | Bắt buộc | Mô tả |
+|---|---|---|
+| `id` | – | UUID. **Có** = update record này; **không có** = create mới |
+| `name` | ✓ | Tên record — required ngay cả khi update |
+| `phone_number` | – | Số điện thoại |
+| `email` | – | Email |
+| `birthday` | – | Format ISO 8601 (`YYYY-MM-DD`) |
+| `full_address` | – | Địa chỉ đầy đủ. Format VN gợi ý: `Số nhà + Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành, Quốc gia` |
+| `pancake_tags[]` | – | Mảng tag IDs |
+| `source[]` | – | Mảng integer IDs từ Sources API |
+| `owner[]` | – | Mảng user UUIDs sở hữu record |
+| `interested_product[]` | – | **CHỈ áp dụng với `lead`** — sản phẩm khách quan tâm. Account/contact không có field này |
+
+### Create — không truyền `id`
+
+```bash
+curl -X POST "https://crm.pancake.vn/api/workspaces/$WS/lead/records?api_key=$KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Nguyễn Văn A",
+    "phone_number": "0901234567",
+    "email": "nva@example.com",
+    "source": [10]
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a1b2c3d4-newly-generated",
+    "name": "Nguyễn Văn A",
+    "phone_number": "0901234567",
+    "...": "..."
+  }
+}
+```
+
+### Update — truyền `id`
+
+```bash
+curl -X POST "https://crm.pancake.vn/api/workspaces/$WS/lead/records?api_key=$KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "a1b2c3d4-...",
+    "name": "Nguyễn Văn A (đã verify)",
+    "phone_number": "0987654321"
+  }'
+```
+
+> [!WARNING]
+> **Lỗi 422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** — không update được lead đã ở trạng thái **canceled / converted / merged**. Đây là business rule cứng — kể cả admin cũng không bypass được qua API. Pattern xử lý: check status lead trước khi update, hoặc catch 422 và log để báo lead này đã closed.
+
+### Lỗi khác
+
+- **403 Forbidden** — `api_key` không có quyền với table này. Check role + workspace ownership.
+
+---
+
+## 7. `DELETE` — bulk delete
+
+```
+DELETE https://crm.pancake.vn/api/workspaces/{workspace_id}/{table_name}/records?api_key={key}&record_ids[]={id1}&record_ids[]={id2}
+```
+
+`record_ids[]` truyền dạng **query string repeat** (KHÔNG phải body):
+
+```bash
+curl -X DELETE "https://crm.pancake.vn/api/workspaces/$WS/lead/records?api_key=$KEY" \
+  --data-urlencode "record_ids[]=uuid1" \
+  --data-urlencode "record_ids[]=uuid2" \
+  --data-urlencode "record_ids[]=uuid3" \
+  -G
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "fallback": "success_only"
+}
+```
+
+> [!IMPORTANT]
+> **Test với 1 record trước khi bulk** — endpoint không có dry-run mode. Soft vs hard delete chưa được doc nói rõ; recommend log lại danh sách `record_ids[]` đã xoá để recovery nếu cần.
+
+---
+
+## 8. `GET /record/{id}` — single record
+
+URL pattern **khác** list (singular `record/`, không phải `records`), và `table_name` là **query param**:
+
+```
+GET https://crm.pancake.vn/api/workspaces/{workspace_id}/record/{record_id}?api_key={key}&table_name={table}
+```
+
+```bash
+curl -G "https://crm.pancake.vn/api/workspaces/$WS/record/$RECORD_ID" \
+  --data-urlencode "api_key=$KEY" \
+  --data-urlencode "table_name=lead"
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a1b2c3d4-...",
+    "name": "Nguyễn Văn A",
+    "...": "..."
+  }
+}
+```
+
+Use case: khi click vào row trong dashboard nội bộ → load chi tiết qua endpoint này (nhanh hơn filter trong list).
+
+---
+
+## 9. Pitfalls thường gặp
+
+| Triệu chứng | Nguyên nhân | Cách fix |
+|---|---|---|
+| 404 endpoint | `table_name` không phải `lead`/`account`/`contact` | Verify table_name hợp lệ |
+| 401 / 403 | `api_key` sai hoặc không có quyền với workspace | Tạo lại key trong Settings → Tools |
+| 422 `LEAD_CANNOT_UPDATE_FROM_CANCEL` | Lead đã canceled / converted / merged | Check status trước, hoặc catch error + log |
+| Filter trả về data sai | JSON filter syntax lỗi | Validate JSON; verify operator name (`$having_value` chứ không phải `having_value`) |
+| `view_id` không tồn tại | UUID sai hoặc view đã bị xoá khỏi dashboard | Dùng `view_id=all` làm fallback |
+| `interested_product` không lưu cho account/contact | Field chỉ áp dụng cho `lead` | Bỏ field này khi POST `account`/`contact` |
+| `record_ids[]` không xoá | Truyền dạng body thay vì query | Dùng query string với `record_ids[]` (có dấu `[]` trong tên param) |
+| Single GET trả 404 | URL dùng `records/` thay vì `record/` (mất `s`), hoặc thiếu `table_name` query | Check URL pattern: `/record/{id}?table_name=...` |
+
+---
+
+## 10. FAQ
+
+**Q: Có endpoint bulk insert không (POST nhiều record cùng lúc)?**
+
+A: **Không.** Pancake CRM hiện chỉ hỗ trợ POST từng record. Bulk import = loop POST + throttle phía client. Pattern khuyến nghị: sleep 100-200ms giữa các request, exponential backoff khi gặp 429/5xx.
+
+**Q: Có sync 2 chiều với HubSpot/Salesforce sẵn không?**
+
+A: **Không có connector chính thức.** Tự build qua: HubSpot/Salesforce webhook → Pancake POST upsert + Pancake webhook → HubSpot/Salesforce API. Xem [bài 3 phương án truy xuất data Pancake](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm) cho pattern integration tương tự (Pancake chat → CRM).
+
+**Q: Custom fields (field tự định nghĩa trong dashboard) có xuất hiện trong response không?**
+
+A: **Có** — custom fields appear ở response với tên field bạn đặt trong dashboard. Field schema trong doc chỉ list standard fields; custom fields cần GET 1 record mẫu để discover schema thực tế của workspace.
+
+**Q: Rate limit là bao nhiêu?**
+
+A: Doc chính thức không nêu con số. Khuyến nghị throttle conservative: **5-10 req/giây/workspace**, exponential backoff khi gặp 429. Test với volume thực tế trước khi production.
+
+**Q: Khác nhau giữa `record` (singular) và `records` (plural) trong URL?**
+
+A: URL convention không nhất quán:
+- `/records` (plural) = list / upsert / bulk delete
+- `/record/{id}` (singular) = get single
+
+Dễ nhầm. Khi viết wrapper class, define rõ method names tương ứng.
+
+---
+
+## 11. Tổng kết
+
+- **4 endpoint Records**: `GET /records` (list), `POST /records` (upsert), `DELETE /records` (bulk), `GET /record/{id}` (single — URL khác)
+- **3 table types**: `lead` / `account` / `contact` — `customer` và tên khác **không hợp lệ**
+- **Upsert pattern**: có `id` = update, không `id` = create — không có endpoint create/update tách riêng
+- **Filter JSON mạnh** với 9 operators + AND/OR + NOT — URL-encode khi truyền query
+- **`view_id`**: dùng view UUID từ dashboard để đồng bộ filter logic với UI
+- **Lỗi đặc biệt 422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** — lead đã closed không update được, kể cả admin
+- **Cursor pagination** — loop tới khi `entries` rỗng, không có total count
+
+---
+
+## Bài viết liên quan
+
+### Cluster Pancake CRM
+
+- [Giới thiệu Pancake CRM API — pillar (auth, workspace, endpoint overview)](/blog/gioi-thieu-pancake-crm-api)
+- Bài này — Records CRUD (đang đọc)
+- Roadmap: Orders API, Tickets API, Webhook CRM, Pancake chat ↔ CRM integration
+
+### Cluster Pancake chat (sister)
+
+- [Hướng dẫn kết nối Webhook & API gửi tin nhắn Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan)
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api) — cursor pagination pattern giống Records
+- [3 phương án truy xuất data Pancake](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm) — integration pattern reference
+
+### Tài liệu chính thức
+
+- [Pancake CRM Developer Docs](https://crm.pancake.vn/developers/) — OpenAPI spec
+
+---
+
+*Last updated: 2026-06-23. Phiên bản API: Pancake CRM 2.0.0. Tham khảo OpenAPI spec để verify thay đổi.*
