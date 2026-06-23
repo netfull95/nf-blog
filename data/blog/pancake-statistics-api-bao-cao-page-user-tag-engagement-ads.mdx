@@ -1,0 +1,532 @@
+---
+title: "Pancake Statistics API — 7 endpoint thống kê (page, user, tag, engagement, ads, new customer)"
+date: "2026-06-23"
+lastmod: "2026-06-23"
+language: "vi"
+translationKey: "pancake-statistics"
+summary: "Hướng dẫn chi tiết 7 endpoint Statistics trên Pancake API — page, user (KPI nhân viên), tag, engagement, ads + ads campaign, new customer. Kèm cảnh báo về 3 FORMAT DATE PARAMS khác nhau giữa các endpoint (since/until Unix sec, date_range string DD/MM/YYYY HH:MM:SS, date_range string DD/MM/YYYY) — đây là pitfall thường gặp khi build BI dashboard hoặc cron sync."
+tags: ["Pancake", "API", "Statistics", "Page Access Token", "Báo cáo", "Analytics", "BI", "KPI", "Ads", "Pancake developer"]
+---
+
+# Pancake Statistics API — 7 endpoint thống kê (page, user, tag, engagement, ads, new customer)
+
+> **TL;DR:** Pancake cung cấp **7 endpoint Statistics** trên `https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/...` để báo cáo: **`pages`** (tổng quan page theo giờ), **`users`** (KPI nhân viên), **`tags`** (thống kê theo tag), **`customer_engagements`** (engagement chart), **`pages_campaigns`** + **`ads`** (quảng cáo), **`page_customers`** (new customer growth). Tất cả cần `page_access_token`. **Quan trọng**: Pancake dùng **3 format date params khác nhau** giữa các endpoint (`since`/`until` Unix sec, `date_range` string `"DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS"`, `date_range` string `"DD/MM/YYYY - DD/MM/YYYY"`) — sai format = response rỗng hoặc 400, nhớ check kỹ.
+
+Sau khi đã biết cách [lấy hội thoại](/blog/lay-danh-sach-hoi-thoai-pancake-api), [đồng bộ khách hàng](/blog/dong-bo-khach-hang-pancake-api-page-customers), và [quản lý tag/assign](/blog/quan-ly-hoi-thoai-pancake-api-tag-assign), bài này cover nhóm endpoint còn lại của Pancake chat — **Statistics**. Đây là nơi để build BI dashboard nội bộ, báo cáo KPI nhân viên, ROI quảng cáo, hoặc gửi báo cáo định kỳ qua email/Slack.
+
+> [!TIP]
+> Bài này tập trung vào **API tech reference**. Để hiểu rõ **ý nghĩa từng chỉ số** dưới góc nhìn business (ví dụ: `inbox_interactive_count` đếm gì, `new_customer` định nghĩa thế nào), tham khảo tài liệu chính thức cho user: **[docs.pancake.biz/pancake — Thống kê](https://docs.pancake.biz/pancake/st-f6/st-p2?lang=vi)**. Pancake doc team đã viết bằng tiếng Việt, có ví dụ minh hoạ từng metric — dùng kèm với bài API này sẽ map chính xác giữa UI metric trên dashboard và field trong API response.
+
+---
+
+## 1. Use cases
+
+| Use case | Endpoint chính |
+|---|---|
+| **Dashboard tổng quan fanpage** (inbox/comment/customer mới theo giờ) | `/statistics/pages` |
+| **KPI nhân viên** (average response time, conversation handled, top performer) | `/statistics/users` |
+| **Effectiveness của tag** (campaign tag đem lại bao nhiêu hội thoại) | `/statistics/tags` |
+| **Chart engagement theo thời gian** (vẽ line chart inbox vs comment) | `/statistics/customer_engagements` |
+| **ROI quảng cáo Facebook** (campaign budget, ad spend, reach, impressions) | `/statistics/pages_campaigns`, `/statistics/ads` |
+| **Customer acquisition tracking** (new customer growth theo ngày/giờ) | `/statistics/page_customers` |
+| **Sync vào BI tool** (Looker Studio, Metabase, Grafana) | Tất cả qua API |
+
+---
+
+## 2. Chuẩn bị + Cảnh báo quan trọng về date format
+
+Tất cả endpoint cần **`page_access_token`** với quyền view reports — xem cách lấy ở [bài Webhook & API gửi tin nhắn](/blog/pancake-webhook-va-api-gui-tin-nhan#1-chuẩn-bị-lấy-page-access-token).
+
+### ⚠ 3 format date params khác nhau (KỸ THUẬT NHẤT cần lưu ý)
+
+Pancake **KHÔNG nhất quán** format date giữa các endpoint Statistics. Đây là nguồn bug phổ biến nhất khi build pipeline:
+
+| Endpoint | Format | Ví dụ |
+|---|---|---|
+| `/statistics/pages` | `since` + `until` Unix timestamp **giây** | `since=1719100800&until=1719705600` |
+| `/statistics/tags` | `since` + `until` Unix timestamp **giây** | `since=1719100800&until=1719705600` |
+| `/statistics/pages_campaigns` | `since` + `until` Unix timestamp **giây** | `since=1719100800&until=1719705600` |
+| `/statistics/ads` | `since` + `until` Unix timestamp **giây** | `since=1719100800&until=1719705600` |
+| `/statistics/users` | `date_range` string **DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS** | `27/07/2026 00:00:00 - 26/08/2026 23:59:59` |
+| `/statistics/customer_engagements` | `date_range` string **DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS** | `27/07/2026 00:00:00 - 26/08/2026 23:59:59` |
+| `/statistics/page_customers` | `date_range` string **DD/MM/YYYY - DD/MM/YYYY** (KHÔNG có HH:MM:SS) | `20/07/2026 - 20/08/2026` |
+
+> [!WARNING]
+> **Sai format = response rỗng hoặc HTTP 400**, không có error message rõ ràng nào nói "wrong date format". Khi viết wrapper class, tạo 3 helper riêng: `toUnixSec()`, `toDateRangeLong()` (có HH:MM:SS), `toDateRangeShort()` (chỉ ngày).
+>
+> ```javascript
+> // 3 helper tương ứng 3 endpoint group
+> const toUnixSec = (d) => Math.floor(d.getTime() / 1000)
+> const toDateRangeLong = (from, to) =>
+>   `${pad(from, 'DD/MM/YYYY HH:MM:SS')} - ${pad(to, 'DD/MM/YYYY HH:MM:SS')}`
+> const toDateRangeShort = (from, to) =>
+>   `${pad(from, 'DD/MM/YYYY')} - ${pad(to, 'DD/MM/YYYY')}`
+> ```
+
+---
+
+## 3. Page — thống kê tổng quan page theo giờ
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/pages
+  ?page_access_token={token}
+  &since={unix_sec}
+  &until={unix_sec}
+```
+
+### cURL example — 7 ngày gần nhất
+
+```bash
+SINCE=$(date -u -v-7d +%s)   # macOS; Linux: date -u -d '7 days ago' +%s
+UNTIL=$(date -u +%s)
+
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/pages" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL"
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "hour": "2026-06-23T10:00:00",
+      "page_inbox_count": 45,
+      "page_comment_count": 12,
+      "customer_inbox_count": 38,
+      "customer_comment_count": 10,
+      "new_inbox_count": 5,
+      "new_customer_count": 3,
+      "phone_number_count": 8,
+      "uniq_phone_number_count": 7,
+      "inbox_interactive_count": 22,
+      "today_uniq_website_referral": 0,
+      "today_website_guest_referral": 0
+    }
+  ]
+}
+```
+
+### Field nghĩa
+
+| Field | Nghĩa |
+|---|---|
+| `hour` | Mốc giờ thống kê |
+| `page_inbox_count` | Tin nhắn page **gửi đi** trong giờ |
+| `customer_inbox_count` | Tin nhắn **khách gửi** vào |
+| `page_comment_count` / `customer_comment_count` | Comment page reply / customer comment |
+| `new_inbox_count` | Số hội thoại inbox MỚI (chưa từng có) |
+| `new_customer_count` | Số khách mới |
+| `phone_number_count` | Số phone thu được (tổng) |
+| `uniq_phone_number_count` | Số phone unique |
+| `inbox_interactive_count` | Số hội thoại có tương tác 2 chiều |
+
+Use case: vẽ chart "Số hội thoại mới theo giờ trong tuần" — phát hiện peak hour để xếp lịch nhân viên trực.
+
+---
+
+## 4. User — KPI nhân viên (response time, conversations handled)
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/users
+  ?page_access_token={token}
+  &date_range={DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS}
+```
+
+### cURL example
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/users" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "date_range=01/06/2026 00:00:00 - 23/06/2026 23:59:59"
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": {
+    "statistics": {
+      "user_uuid_1": [
+        {
+          "hour": "2026-06-15T10:00:00",
+          "average_response_time": 74276,
+          "inbox_count": 6,
+          "comment_count": 0,
+          "phone_number_count": 1,
+          "private_reply_count": 0,
+          "unique_inbox_count": 2,
+          "unique_comment_count": 0
+        }
+      ]
+    },
+    "users": {
+      "user_uuid_1": {
+        "user_name": "Nguyễn Văn A",
+        "user_fb_id": "570423649807405",
+        "average_response_time": 588569,
+        "inbox_count": 637,
+        "comment_count": 0,
+        "phone_number_count": 5,
+        "unique_inbox_count": 30,
+        "private_reply_count": 0
+      }
+    }
+  }
+}
+```
+
+Response chia **2 phần**:
+- **`statistics`** — break down per user × per hour (granular cho chart)
+- **`users`** — tổng hợp per user (cho leaderboard)
+
+### Lưu ý — `average_response_time` đơn vị **SECOND**
+
+```javascript
+// Đơn vị là second — convert sang minute để hiển thị nếu cần
+const seconds = user.average_response_time              // 588 giây
+const minutes = (user.average_response_time / 60).toFixed(1)  // 9.8 phút
+```
+
+> [!TIP]
+> **`average_response_time` là SECOND**, mặc dù OpenAPI spec của Pancake ghi "milliseconds" — trên thực tế giá trị trả về là giây. Verify với data của page bạn trước khi display: vd `74276` giây ≈ 20 giờ là vô lý cho response time → nếu thấy số to bất thường, kiểm tra lại cách Pancake gửi cho page bạn.
+
+Use case: dashboard "Top 5 nhân viên reply nhanh nhất tuần qua" + report KPI cuối tháng cho HR/Sales lead.
+
+---
+
+## 5. Tag — thống kê hội thoại theo tag
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/tags
+  ?page_access_token={token}
+  &since={unix_sec}
+  &until={unix_sec}
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": {
+    "categories": ["2026-06-20", "2026-06-21", "2026-06-22"],
+    "series": {
+      "tag_id_1": [10, 15, 8],
+      "tag_id_2": [3, 5, 2]
+    }
+  },
+  "data_today": {
+    "categories": ["00:00", "01:00", "02:00"],
+    "series": {
+      "tag_id_1": [1, 0, 2]
+    }
+  },
+  "tags": [
+    { "id": "tag_id_1", "text": "Đặt hàng", "color": "#2ecc71" },
+    { "id": "tag_id_2", "text": "Khiếu nại", "color": "#e74c3c" }
+  ]
+}
+```
+
+3 phần response:
+- **`data`** — series time-range (categories = ngày, series = mỗi tag có array số liệu mỗi ngày)
+- **`data_today`** — chi tiết hôm nay theo giờ (24 entries)
+- **`tags`** — metadata tags (mapping ID → text + color để render legend)
+
+> [!IMPORTANT]
+> `series` trả về dạng **object** với key là `tag_id`, KHÔNG phải array. Khi parse trong JavaScript, dùng `Object.entries(series)` thay vì `.map()`.
+
+Use case: report "Tag nào đem nhiều hội thoại nhất tuần này" → quyết định scale ads campaign nào.
+
+---
+
+## 6. Engagement — chart tương tác khách hàng theo thời gian
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/customer_engagements
+  ?page_access_token={token}
+  &date_range={DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS}
+  &by_hour={true|false}
+  &user_ids={uid1,uid2}
+```
+
+### Params
+
+| Param | Required | Mô tả |
+|---|---|---|
+| `date_range` | ✓ | Format `DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS` |
+| `by_hour` | – | `true` = data per hour (24 buckets/ngày); `false`/omit = per day |
+| `user_ids` | – | Comma-separated UUIDs để filter theo nhân viên cụ thể |
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": {
+    "categories": ["20/6", "21/6", "22/6"],
+    "series": [
+      { "name": "inbox", "data": [45, 52, 38] },
+      { "name": "comment", "data": [12, 18, 10] },
+      { "name": "total", "data": [57, 70, 48] },
+      { "name": "new_customer", "data": [5, 8, 3] },
+      { "name": "new_customer_from_inbox", "data": [4, 7, 2] }
+    ]
+  },
+  "statistics": [
+    {
+      "hour": "2026-06-22T10:00:00",
+      "inbox": 5,
+      "comment": 1,
+      "total": 6,
+      "new_customer": 1,
+      "new_customer_from_inbox": 1
+    }
+  ]
+}
+```
+
+2 view:
+- **`data`** — đã format sẵn cho chart library (categories = trục X, series[] = nhiều đường line). Cứ feed thẳng vào ApexCharts/Chart.js là render.
+- **`statistics[]`** — raw data per hour, để bạn tự aggregate hoặc dùng cho BI tool
+
+### Engagement metrics
+
+- **`inbox`** — số khách tương tác qua inbox (kể cả khách cũ + mới). Mỗi khách đếm 1 lần/ngày.
+- **`comment`** — số khách tương tác qua comment (cũng đếm 1 lần/ngày/khách)
+- **`total`** — tổng inbox + comment (không trùng — nếu khách tương tác cả 2 kênh, đếm 1)
+- **`new_customer`** — khách mới (chưa từng tương tác trước đây) qua message hoặc comment
+- **`new_customer_from_inbox`** — khách mới khởi tạo inbox conversation lần đầu (vẫn đếm nếu trước đó chỉ comment)
+
+Use case: dashboard "Tăng trưởng tương tác khách hàng tháng này" — vẽ line chart 5 đường, gửi báo cáo cuối tháng cho ban giám đốc.
+
+---
+
+## 7. Ads + Ads Campaign — thống kê quảng cáo
+
+Pancake có 2 endpoint riêng cho quảng cáo: **campaign level** (tổng quan budget) và **ad level** (chi tiết per ad).
+
+### 7.1. `/statistics/pages_campaigns` — campaign-level
+
+```
+GET /pages/{page_id}/statistics/pages_campaigns?page_access_token=...&since=...&until=...
+```
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/pages_campaigns" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL"
+```
+
+Response array:
+
+```json
+[
+  {
+    "account_id": "act_123456789",
+    "ad_id": "ad_uuid_1",
+    "adset_id": "adset_uuid_1",
+    "budget_remaining": "150000",
+    "currency": "VND",
+    "daily_budget": "500000",
+    "status": "ACTIVE"
+  }
+]
+```
+
+Use case: dashboard "Campaign nào sắp hết budget" → alert sớm để top up.
+
+### 7.2. `/statistics/ads` — ad-level chi tiết
+
+```
+GET /pages/{page_id}/statistics/ads
+  ?page_access_token=...
+  &since=...&until=...
+  &type=by_id    # hoặc by_time
+```
+
+| Param | Mô tả |
+|---|---|
+| `type=by_id` | Aggregate per ad ID (mỗi ad 1 row tổng) |
+| `type=by_time` | Aggregate per ad × per time bucket |
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/ads" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL" \
+  --data-urlencode "type=by_id"
+```
+
+Response:
+
+```json
+[
+  {
+    "name": "Ad - Khuyến mãi 6/6",
+    "status": "ACTIVE",
+    "currency": "VND",
+    "reach": "15234",
+    "impressions": "45678",
+    "spend": "230000"
+  }
+]
+```
+
+> [!IMPORTANT]
+> `type` là **bắt buộc** — không truyền → 400. Chọn `by_id` cho leaderboard (top ad), `by_time` cho chart performance theo ngày.
+
+Use case: report "Top 10 ad reach cao nhất tháng" → quyết định scale up những ad nào.
+
+---
+
+## 8. New Customer — tăng trưởng khách mới
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/page_customers
+  ?page_access_token={token}
+  &date_range={DD/MM/YYYY - DD/MM/YYYY}
+  &group_by={day|hour|page_id}
+```
+
+### Params
+
+| Param | Required | Mô tả |
+|---|---|---|
+| `date_range` | ✓ | Format **DD/MM/YYYY - DD/MM/YYYY** (KHÔNG có HH:MM:SS — khác user/engagement!) |
+| `group_by` | – | `day` (mặc định), `hour`, hoặc `page_id` |
+
+### cURL example
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/page_customers" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "date_range=01/06/2026 - 23/06/2026" \
+  --data-urlencode "group_by=day"
+```
+
+### Response shape — group_by=day/hour
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "date": "2026-06-20",
+      "new_customer_count": 4,
+      "new_page_inbox_count": 3,
+      "new_phone_number_count": 0,
+      "phone_number_count": 0
+    }
+  ]
+}
+```
+
+### Response shape — group_by=page_id
+
+```json
+{
+  "success": true,
+  "data": {
+    "page_id_1": [
+      { "date": "2026-06-20", "new_customer_count": 0, "new_page_inbox_count": 1, ... }
+    ],
+    "page_id_2": [
+      { "date": "2026-06-20", "new_customer_count": 2, ... }
+    ]
+  }
+}
+```
+
+> [!WARNING]
+> Khác `/page_customers` (list khách hàng — xem [bài Page Customers](/blog/dong-bo-khach-hang-pancake-api-page-customers)) — endpoint này là **statistics aggregate**, không trả ra từng customer object. Đừng nhầm 2 endpoint cùng path nhưng khác response.
+
+Use case: vẽ chart "Customer Acquisition theo tuần" + so sánh nhiều page nếu manage multi-page.
+
+---
+
+## 9. Pitfalls tổng hợp
+
+| Triệu chứng | Nguyên nhân | Cách fix |
+|---|---|---|
+| Response rỗng `{data: []}` | Sai format date params (Unix sec vs date_range string) | Match đúng format từng endpoint — xem bảng section 2 |
+| HTTP 400 không có message | Date format sai hoặc thiếu `type` cho `/ads` | Validate params trước khi gọi |
+| `average_response_time` không khớp dashboard | Đơn vị là **second** dù spec ghi "milliseconds" | Hiển thị dạng giây hoặc convert sang phút (chia 60) |
+| `series` của Tag không loop được bằng `.map()` | `series` là **object** key=tag_id, không phải array | Dùng `Object.entries(series)` |
+| Tag legend không có tên | Quên gộp với `tags[]` metadata | Build map `tag_id → text` từ `tags[]` để render |
+| Số `new_customer_count` ở `/pages` khác `/page_customers` | Cách đếm khác nhau (window time vs aggregate group_by) | Pick 1 endpoint làm source of truth, document trong code |
+| Nhầm 2 endpoint cùng tên `/page_customers` | List vs Statistics | List = full object khách; Statistics = chỉ count |
+| 403 Forbidden | Token không có quyền view reports | Check token role + permission trong dashboard |
+
+---
+
+## 10. FAQ
+
+**Q: Endpoint nào cho tổng số khách trong tháng?**
+
+A: Dùng `/statistics/page_customers?date_range=01/06/2026 - 30/06/2026&group_by=day` → loop sum `new_customer_count` của 30 ngày. Pancake không có endpoint trả tổng trực tiếp.
+
+**Q: Có endpoint nào trả CSV/Excel sẵn không?**
+
+A: **Không.** Statistics API chỉ trả JSON. Muốn CSV → tự convert client-side (vd: `papaparse` lib trong Node) hoặc dùng `/export_data` (chỉ cho conversations từ ads, không phải statistics).
+
+**Q: Rate limit của Statistics endpoints?**
+
+A: Vẫn là **5 req/page/giây** (chung Public API). Statistics thường gọi định kỳ (hourly cron, không realtime), nên ít khi đụng limit.
+
+**Q: `inbox_count` ở `/statistics/users` (per user) vs `/statistics/pages` khác gì?**
+
+A: `/users` đếm **per nhân viên** (tin nhắn user đó xử lý); `/pages` đếm **toàn page** (tổng tin nhắn page nhận/gửi). Sum của tất cả users **không nhất thiết bằng** page total — vì có tin nhắn auto-reply hoặc unassigned.
+
+**Q: Có sync được data Statistics sang Google Looker Studio / Metabase không?**
+
+A: Có. Pattern: cron 1h/lần gọi tất cả 7 endpoint → lưu vào Postgres/BigQuery → connect Looker Studio/Metabase qua connector chuẩn. Xem [bài 3 phương án truy xuất data Pancake](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm) cho integration pattern.
+
+**Q: Có thể filter Statistics theo channel (FB / IG / Zalo) không?**
+
+A: Hiện tại Statistics chỉ aggregate cấp page, không break-down theo channel. Nếu cần data per-channel, phải tự build bằng cách query [list conversations](/blog/lay-danh-sach-hoi-thoai-pancake-api) với filter `type` rồi aggregate.
+
+---
+
+## 11. Tổng kết
+
+- **7 endpoint Statistics** trên `/pages/{id}/statistics/...`: `pages` (tổng page), `users` (KPI nhân viên), `tags` (per tag), `customer_engagements` (chart), `pages_campaigns` (campaign budget), `ads` (chi tiết ad), `page_customers` (new customer growth).
+- **3 format date params khác nhau** giữa các endpoint — pitfall #1, viết helper riêng cho 3 dạng.
+- **`average_response_time` đơn vị SECOND** dù OpenAPI spec ghi "milliseconds" — verify với data thực của page trước khi display.
+- **Tag `series` là object** không phải array — dùng `Object.entries()`.
+- **`/ads` cần `type` param bắt buộc** (`by_id` | `by_time`).
+- **`/page_customers` Statistics ≠ `/page_customers` List** — cùng path nhưng khác response.
+- **Use case chính**: BI dashboard nội bộ, KPI nhân viên, ROI quảng cáo, báo cáo định kỳ.
+
+---
+
+## Bài viết liên quan
+
+### Cluster Pancake chat
+
+- [Giới thiệu Pancake — Hệ sinh thái](/blog/gioi-thieu-pancake)
+- [Hướng dẫn kết nối Webhook & API gửi tin nhắn Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan)
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api)
+- [Page Customers API — Đồng bộ khách hàng](/blog/dong-bo-khach-hang-pancake-api-page-customers)
+- [3 phương án truy xuất data Pancake → CRM](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm)
+- [Quản lý hội thoại API — Tag, Assign, Mark Read/Unread](/blog/quan-ly-hoi-thoai-pancake-api-tag-assign)
+
+### Cluster Pancake CRM
+
+- [Giới thiệu Pancake CRM API](/blog/gioi-thieu-pancake-crm-api)
+- [Records CRUD (lead/account/contact)](/blog/pancake-crm-records-crud-api-lead-account-contact)
+
+### Tài liệu chính thức
+
+- [Pancake Developer Docs](https://developer.pancake.biz/) — OpenAPI spec đầy đủ
+- [Pancake User Docs — Thống kê (giải thích ý nghĩa từng chỉ số bằng tiếng Việt)](https://docs.pancake.biz/pancake/st-f6/st-p2?lang=vi) — đọc kèm khi cần hiểu chính xác metric nào đếm gì
+
+---
+
+*Last updated: 2026-06-23. Phiên bản API: `public_api/v1` cho toàn bộ Statistics endpoints. Tham khảo OpenAPI spec để verify thay đổi.*

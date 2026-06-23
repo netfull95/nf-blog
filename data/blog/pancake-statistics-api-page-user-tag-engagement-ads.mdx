@@ -1,0 +1,532 @@
+---
+title: "Pancake Statistics API — 7 endpoints (page, user, tag, engagement, ads, new customer)"
+date: "2026-06-23"
+lastmod: "2026-06-23"
+language: "en"
+translationKey: "pancake-statistics"
+summary: "Full reference for the 7 Statistics endpoints in the Pancake chat API — page, user (agent KPIs), tag, engagement, ads + ads campaign, new customer. Includes a critical warning about the 3 DIFFERENT date param formats across endpoints (since/until Unix seconds, date_range string DD/MM/YYYY HH:MM:SS, date_range string DD/MM/YYYY) — the #1 pitfall when building BI dashboards or scheduled syncs."
+tags: ["Pancake", "API", "Statistics", "Page Access Token", "Reporting", "Analytics", "BI", "KPI", "Ads", "Pancake developer"]
+---
+
+# Pancake Statistics API — 7 endpoints (page, user, tag, engagement, ads, new customer)
+
+> **TL;DR:** Pancake exposes **7 Statistics endpoints** under `https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/...` for reporting: **`pages`** (page overview by hour), **`users`** (agent KPIs), **`tags`** (per-tag breakdown), **`customer_engagements`** (engagement chart), **`pages_campaigns`** + **`ads`** (ad reporting), **`page_customers`** (new customer growth). All require a `page_access_token`. **Critical**: Pancake uses **3 different date param formats** across endpoints (`since`/`until` Unix seconds, `date_range` string `"DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS"`, `date_range` string `"DD/MM/YYYY - DD/MM/YYYY"`) — wrong format = empty response or 400 with no clear error message.
+
+Once you know how to [list conversations](/en/blog/get-pancake-conversations-list-api), [sync customers](/en/blog/pancake-page-customers-api-sync-to-crm), and [manage tags/assignments](/en/blog/pancake-conversation-workflow-tag-assign-api), this post covers the remaining Pancake chat endpoint group — **Statistics**. This is what you reach for when building internal BI dashboards, agent KPI reports, ad ROI tracking, or scheduled email/Slack reports.
+
+> [!TIP]
+> This post focuses on the **API tech reference**. For the **business meaning of each metric** (e.g. what exactly `inbox_interactive_count` counts, how `new_customer` is defined), see the official user-facing docs: **[docs.pancake.biz/pancake — Statistics](https://docs.pancake.biz/pancake/st-f6/st-p2?lang=en)**. The Pancake doc team has written it with examples per metric — read alongside this API post to precisely map dashboard UI metrics to API response fields.
+
+---
+
+## 1. Use cases
+
+| Use case | Main endpoint |
+|---|---|
+| **Page overview dashboard** (inbox/comment/new customers by hour) | `/statistics/pages` |
+| **Agent KPIs** (average response time, conversations handled, top performer) | `/statistics/users` |
+| **Tag effectiveness** (which campaign tag brought in the most conversations) | `/statistics/tags` |
+| **Engagement chart over time** (line chart of inbox vs comment) | `/statistics/customer_engagements` |
+| **Facebook ad ROI** (campaign budget, ad spend, reach, impressions) | `/statistics/pages_campaigns`, `/statistics/ads` |
+| **Customer acquisition tracking** (new customer growth by day/hour) | `/statistics/page_customers` |
+| **Pipe data into BI tools** (Looker Studio, Metabase, Grafana) | All endpoints via API |
+
+---
+
+## 2. Setup + critical warning about date format
+
+All endpoints need a **`page_access_token`** with reports permission — see the setup in the [Webhook & API guide](/en/blog/pancake-webhook-and-api-send-message#1-prepare-the-page-access-token).
+
+### ⚠ 3 different date param formats (THE single most important thing to remember)
+
+Pancake is **inconsistent** about date params across Statistics endpoints. This is the most common bug source when building a pipeline:
+
+| Endpoint | Format | Example |
+|---|---|---|
+| `/statistics/pages` | `since` + `until` Unix timestamp **seconds** | `since=1719100800&until=1719705600` |
+| `/statistics/tags` | `since` + `until` Unix timestamp **seconds** | `since=1719100800&until=1719705600` |
+| `/statistics/pages_campaigns` | `since` + `until` Unix timestamp **seconds** | `since=1719100800&until=1719705600` |
+| `/statistics/ads` | `since` + `until` Unix timestamp **seconds** | `since=1719100800&until=1719705600` |
+| `/statistics/users` | `date_range` string **DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS** | `27/07/2026 00:00:00 - 26/08/2026 23:59:59` |
+| `/statistics/customer_engagements` | `date_range` string **DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS** | `27/07/2026 00:00:00 - 26/08/2026 23:59:59` |
+| `/statistics/page_customers` | `date_range` string **DD/MM/YYYY - DD/MM/YYYY** (NO HH:MM:SS) | `20/07/2026 - 20/08/2026` |
+
+> [!WARNING]
+> **Wrong format = empty response or HTTP 400**, with no error message saying "wrong date format". When writing a wrapper class, create 3 separate helpers: `toUnixSec()`, `toDateRangeLong()` (with HH:MM:SS), `toDateRangeShort()` (date only).
+>
+> ```javascript
+> // 3 helpers matching the 3 endpoint groups
+> const toUnixSec = (d) => Math.floor(d.getTime() / 1000)
+> const toDateRangeLong = (from, to) =>
+>   `${pad(from, 'DD/MM/YYYY HH:MM:SS')} - ${pad(to, 'DD/MM/YYYY HH:MM:SS')}`
+> const toDateRangeShort = (from, to) =>
+>   `${pad(from, 'DD/MM/YYYY')} - ${pad(to, 'DD/MM/YYYY')}`
+> ```
+
+---
+
+## 3. Page — overview by hour
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/pages
+  ?page_access_token={token}
+  &since={unix_sec}
+  &until={unix_sec}
+```
+
+### cURL example — last 7 days
+
+```bash
+SINCE=$(date -u -v-7d +%s)   # macOS; Linux: date -u -d '7 days ago' +%s
+UNTIL=$(date -u +%s)
+
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/pages" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL"
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "hour": "2026-06-23T10:00:00",
+      "page_inbox_count": 45,
+      "page_comment_count": 12,
+      "customer_inbox_count": 38,
+      "customer_comment_count": 10,
+      "new_inbox_count": 5,
+      "new_customer_count": 3,
+      "phone_number_count": 8,
+      "uniq_phone_number_count": 7,
+      "inbox_interactive_count": 22,
+      "today_uniq_website_referral": 0,
+      "today_website_guest_referral": 0
+    }
+  ]
+}
+```
+
+### Field meanings
+
+| Field | Meaning |
+|---|---|
+| `hour` | Hour bucket for the stat |
+| `page_inbox_count` | Inbox messages **sent by the page** in this hour |
+| `customer_inbox_count` | Inbox messages **sent by customers** |
+| `page_comment_count` / `customer_comment_count` | Page-reply comments / customer comments |
+| `new_inbox_count` | Number of NEW inbox conversations (first time) |
+| `new_customer_count` | Number of new customers |
+| `phone_number_count` | Total phone numbers collected |
+| `uniq_phone_number_count` | Unique phone numbers |
+| `inbox_interactive_count` | Conversations with two-way interaction |
+
+Use case: chart "New conversations per hour this week" — find the peak hours and schedule agent shifts accordingly.
+
+---
+
+## 4. User — agent KPIs (response time, conversations handled)
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/users
+  ?page_access_token={token}
+  &date_range={DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS}
+```
+
+### cURL example
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/users" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "date_range=01/06/2026 00:00:00 - 23/06/2026 23:59:59"
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": {
+    "statistics": {
+      "user_uuid_1": [
+        {
+          "hour": "2026-06-15T10:00:00",
+          "average_response_time": 74276,
+          "inbox_count": 6,
+          "comment_count": 0,
+          "phone_number_count": 1,
+          "private_reply_count": 0,
+          "unique_inbox_count": 2,
+          "unique_comment_count": 0
+        }
+      ]
+    },
+    "users": {
+      "user_uuid_1": {
+        "user_name": "John Doe",
+        "user_fb_id": "570423649807405",
+        "average_response_time": 588569,
+        "inbox_count": 637,
+        "comment_count": 0,
+        "phone_number_count": 5,
+        "unique_inbox_count": 30,
+        "private_reply_count": 0
+      }
+    }
+  }
+}
+```
+
+The response is split into **two views**:
+- **`statistics`** — broken down per user × per hour (granular for charts)
+- **`users`** — aggregated per user (for leaderboards)
+
+### Heads-up — `average_response_time` is in **SECONDS**
+
+```javascript
+// The value is in seconds — convert to minutes for display if needed
+const seconds = user.average_response_time              // 588 seconds
+const minutes = (user.average_response_time / 60).toFixed(1)  // 9.8 minutes
+```
+
+> [!TIP]
+> **`average_response_time` is in SECONDS**, even though Pancake's OpenAPI spec says "milliseconds" — in practice the value returned is seconds. Verify with your own page's data before displaying: e.g. `74276` seconds ≈ 20 hours is unreasonable for a response time → if you see an unusually large number, double-check how Pancake is sending it for your page.
+
+Use case: "Top 5 fastest-replying agents this week" dashboard + monthly KPI report for HR/Sales lead.
+
+---
+
+## 5. Tag — conversation stats per tag
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/tags
+  ?page_access_token={token}
+  &since={unix_sec}
+  &until={unix_sec}
+```
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": {
+    "categories": ["2026-06-20", "2026-06-21", "2026-06-22"],
+    "series": {
+      "tag_id_1": [10, 15, 8],
+      "tag_id_2": [3, 5, 2]
+    }
+  },
+  "data_today": {
+    "categories": ["00:00", "01:00", "02:00"],
+    "series": {
+      "tag_id_1": [1, 0, 2]
+    }
+  },
+  "tags": [
+    { "id": "tag_id_1", "text": "Orders", "color": "#2ecc71" },
+    { "id": "tag_id_2", "text": "Complaints", "color": "#e74c3c" }
+  ]
+}
+```
+
+3 response parts:
+- **`data`** — time-range series (categories = days, series = each tag has an array of daily counts)
+- **`data_today`** — today's breakdown by hour (24 entries)
+- **`tags`** — tag metadata (ID → text + color mapping to render legends)
+
+> [!IMPORTANT]
+> `series` is returned as an **object** keyed by `tag_id`, NOT an array. In JavaScript, use `Object.entries(series)` instead of `.map()`.
+
+Use case: "Which tags brought in the most conversations this week" report → decide which ads campaign to scale.
+
+---
+
+## 6. Engagement — customer engagement chart over time
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/customer_engagements
+  ?page_access_token={token}
+  &date_range={DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS}
+  &by_hour={true|false}
+  &user_ids={uid1,uid2}
+```
+
+### Params
+
+| Param | Required | Description |
+|---|---|---|
+| `date_range` | ✓ | Format `DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS` |
+| `by_hour` | – | `true` = data per hour (24 buckets/day); `false`/omit = per day |
+| `user_ids` | – | Comma-separated UUIDs to filter by specific agents |
+
+### Response shape
+
+```json
+{
+  "success": true,
+  "data": {
+    "categories": ["20/6", "21/6", "22/6"],
+    "series": [
+      { "name": "inbox", "data": [45, 52, 38] },
+      { "name": "comment", "data": [12, 18, 10] },
+      { "name": "total", "data": [57, 70, 48] },
+      { "name": "new_customer", "data": [5, 8, 3] },
+      { "name": "new_customer_from_inbox", "data": [4, 7, 2] }
+    ]
+  },
+  "statistics": [
+    {
+      "hour": "2026-06-22T10:00:00",
+      "inbox": 5,
+      "comment": 1,
+      "total": 6,
+      "new_customer": 1,
+      "new_customer_from_inbox": 1
+    }
+  ]
+}
+```
+
+2 views:
+- **`data`** — pre-formatted for chart libraries (categories = X-axis, series[] = multiple line series). Pass straight to ApexCharts/Chart.js and it renders.
+- **`statistics[]`** — raw data per hour, for custom aggregation or BI tooling
+
+### Engagement metrics
+
+- **`inbox`** — number of customers interacting via inbox (both new and existing). Each customer counted once per day.
+- **`comment`** — number of customers interacting via comment (also counted once per day per customer)
+- **`total`** — total inbox + comment, deduplicated (if a customer interacts on both channels, counted once)
+- **`new_customer`** — new customers (never interacted before) via message or comment
+- **`new_customer_from_inbox`** — new customers who first started an inbox conversation (still counted if they previously commented)
+
+Use case: "Customer engagement growth this month" dashboard — render a 5-line chart and email the monthly report to leadership.
+
+---
+
+## 7. Ads + Ads Campaign — advertising stats
+
+Pancake has 2 separate endpoints for ads: **campaign level** (budget overview) and **ad level** (per-ad detail).
+
+### 7.1. `/statistics/pages_campaigns` — campaign level
+
+```
+GET /pages/{page_id}/statistics/pages_campaigns?page_access_token=...&since=...&until=...
+```
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/pages_campaigns" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL"
+```
+
+Response array:
+
+```json
+[
+  {
+    "account_id": "act_123456789",
+    "ad_id": "ad_uuid_1",
+    "adset_id": "adset_uuid_1",
+    "budget_remaining": "150000",
+    "currency": "VND",
+    "daily_budget": "500000",
+    "status": "ACTIVE"
+  }
+]
+```
+
+Use case: "Which campaigns are running low on budget" dashboard → early alert for top-up.
+
+### 7.2. `/statistics/ads` — per-ad detail
+
+```
+GET /pages/{page_id}/statistics/ads
+  ?page_access_token=...
+  &since=...&until=...
+  &type=by_id    # or by_time
+```
+
+| Param | Description |
+|---|---|
+| `type=by_id` | Aggregate per ad ID (one row per ad with totals) |
+| `type=by_time` | Aggregate per ad × per time bucket |
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/ads" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "since=$SINCE" \
+  --data-urlencode "until=$UNTIL" \
+  --data-urlencode "type=by_id"
+```
+
+Response:
+
+```json
+[
+  {
+    "name": "Ad - June 6 Promo",
+    "status": "ACTIVE",
+    "currency": "VND",
+    "reach": "15234",
+    "impressions": "45678",
+    "spend": "230000"
+  }
+]
+```
+
+> [!IMPORTANT]
+> `type` is **required** — omit it and you get 400. Use `by_id` for leaderboards (top ads), `by_time` for daily performance charts.
+
+Use case: "Top 10 ads by reach this month" report → decide which ads to scale up.
+
+---
+
+## 8. New Customer — new customer growth
+
+```
+GET https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/page_customers
+  ?page_access_token={token}
+  &date_range={DD/MM/YYYY - DD/MM/YYYY}
+  &group_by={day|hour|page_id}
+```
+
+### Params
+
+| Param | Required | Description |
+|---|---|---|
+| `date_range` | ✓ | Format **DD/MM/YYYY - DD/MM/YYYY** (NO HH:MM:SS — different from user/engagement!) |
+| `group_by` | – | `day` (default), `hour`, or `page_id` |
+
+### cURL example
+
+```bash
+curl -G "https://pages.fm/api/public_api/v1/pages/$PAGE_ID/statistics/page_customers" \
+  --data-urlencode "page_access_token=$TOKEN" \
+  --data-urlencode "date_range=01/06/2026 - 23/06/2026" \
+  --data-urlencode "group_by=day"
+```
+
+### Response shape — group_by=day/hour
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "date": "2026-06-20",
+      "new_customer_count": 4,
+      "new_page_inbox_count": 3,
+      "new_phone_number_count": 0,
+      "phone_number_count": 0
+    }
+  ]
+}
+```
+
+### Response shape — group_by=page_id
+
+```json
+{
+  "success": true,
+  "data": {
+    "page_id_1": [
+      { "date": "2026-06-20", "new_customer_count": 0, "new_page_inbox_count": 1, "new_phone_number_count": 0, "phone_number_count": 0 }
+    ],
+    "page_id_2": [
+      { "date": "2026-06-20", "new_customer_count": 2, "new_page_inbox_count": 1, "new_phone_number_count": 0, "phone_number_count": 0 }
+    ]
+  }
+}
+```
+
+> [!WARNING]
+> Different from `/page_customers` (the customer list — see [Page Customers post](/en/blog/pancake-page-customers-api-sync-to-crm)) — this endpoint is **aggregate statistics**, not full customer objects. Don't confuse the two endpoints sharing the same path.
+
+Use case: chart "Customer Acquisition by week" + compare multiple pages if you manage a multi-page setup.
+
+---
+
+## 9. Combined pitfalls
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Empty response `{data: []}` | Wrong date param format (Unix sec vs date_range string) | Match the correct format per endpoint — see table in section 2 |
+| HTTP 400 with no message | Wrong date format, or missing `type` for `/ads` | Validate params before calling |
+| `average_response_time` doesn't match the dashboard | Unit is **seconds** despite spec saying "milliseconds" | Display as seconds or convert to minutes (divide by 60) |
+| Tag `series` doesn't loop with `.map()` | `series` is an **object** keyed by tag_id, not an array | Use `Object.entries(series)` |
+| Tag legend has no name | Forgot to join with `tags[]` metadata | Build a `tag_id → text` map from `tags[]` for rendering |
+| `new_customer_count` differs between `/pages` and `/page_customers` | Different counting methods (time window vs aggregate group_by) | Pick one endpoint as source of truth, document in code |
+| Confused two `/page_customers` endpoints | List vs Statistics | List = full customer objects; Statistics = counts only |
+| 403 Forbidden | Token lacks reports permission | Check token role + permissions in dashboard |
+
+---
+
+## 10. FAQ
+
+**Q: Which endpoint gives the total customers this month?**
+
+A: Use `/statistics/page_customers?date_range=01/06/2026 - 30/06/2026&group_by=day` and sum `new_customer_count` across all 30 days. Pancake doesn't expose a direct "total" endpoint.
+
+**Q: Is there an endpoint that returns CSV/Excel directly?**
+
+A: **No.** The Statistics API only returns JSON. To get CSV → convert client-side (e.g. `papaparse` in Node) or use `/export_data` (only for conversations from ads, not for statistics).
+
+**Q: What's the rate limit on Statistics endpoints?**
+
+A: Same as the rest of the Public API: **5 req/page/second**. Statistics is usually called periodically (hourly cron, not realtime), so you rarely hit the limit.
+
+**Q: How is `inbox_count` in `/statistics/users` (per agent) different from `/statistics/pages`?**
+
+A: `/users` counts **per agent** (messages that agent handled); `/pages` counts **per page** (total messages the page received/sent). Summing all users does **not necessarily equal** the page total — auto-replies and unassigned messages also count.
+
+**Q: Can I sync Statistics data to Google Looker Studio / Metabase?**
+
+A: Yes. Pattern: cron every 1 hour calling all 7 endpoints → write to Postgres/BigQuery → connect Looker Studio/Metabase via standard connector. See the [3 ways to extract Pancake data](/en/blog/3-ways-to-extract-pancake-data-into-your-crm) post for the integration pattern.
+
+**Q: Can I filter Statistics by channel (FB / IG / Zalo)?**
+
+A: Statistics currently only aggregates at the page level, with no channel breakdown. For per-channel data, you'd have to build it yourself by querying [list conversations](/en/blog/get-pancake-conversations-list-api) with a `type` filter and aggregating.
+
+---
+
+## 11. Summary
+
+- **7 Statistics endpoints** under `/pages/{id}/statistics/...`: `pages` (page overview), `users` (agent KPIs), `tags` (per tag), `customer_engagements` (chart), `pages_campaigns` (campaign budgets), `ads` (per-ad detail), `page_customers` (new customer growth).
+- **3 different date param formats** across endpoints — pitfall #1, write 3 separate helpers.
+- **`average_response_time` is in SECONDS** despite the OpenAPI spec saying "milliseconds" — verify with your own page's data before displaying.
+- **Tag `series` is an object** not an array — use `Object.entries()`.
+- **`/ads` requires the `type` param** (`by_id` | `by_time`).
+- **`/page_customers` Statistics ≠ `/page_customers` List** — same path, different response.
+- **Main use cases**: internal BI dashboards, agent KPIs, ad ROI, scheduled reports.
+
+---
+
+## Related posts
+
+### Pancake chat cluster
+
+- [The Pancake Ecosystem](/en/blog/introducing-pancake)
+- [Pancake Webhook & API Send Message Guide](/en/blog/pancake-webhook-and-api-send-message)
+- [Get Pancake Conversations List API](/en/blog/get-pancake-conversations-list-api)
+- [Pancake Page Customers API](/en/blog/pancake-page-customers-api-sync-to-crm)
+- [3 Ways to Extract Pancake Data into Your CRM](/en/blog/3-ways-to-extract-pancake-data-into-your-crm)
+- [Conversation Workflow API — Tag, Assign, Mark Read/Unread](/en/blog/pancake-conversation-workflow-tag-assign-api)
+
+### Pancake CRM cluster
+
+- [Introducing the Pancake CRM API](/en/blog/introducing-pancake-crm-api)
+- [Records CRUD (lead/account/contact)](/en/blog/pancake-crm-records-managing-lead-account-contact)
+
+### Official documentation
+
+- [Pancake Developer Docs](https://developer.pancake.biz/) — full OpenAPI spec
+- [Pancake User Docs — Statistics (metric definitions in English)](https://docs.pancake.biz/pancake/st-f6/st-p2?lang=en) — read alongside this post when you need the precise business meaning of a metric
+
+---
+
+*Last updated: 2026-06-23. API version: `public_api/v1` for all Statistics endpoints. Check the OpenAPI spec to verify any changes.*
