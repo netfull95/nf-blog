@@ -11,8 +11,30 @@ function geoCountry(req: NextRequest): string {
   return req.headers.get('x-vercel-ip-country') || 'VN'
 }
 
+// Markdown content negotiation for blog posts. When an AI agent (or any
+// client) sends `Accept: text/markdown`, return the raw MDX instead of
+// rendered HTML by rewriting to /api/blog/markdown/{slug}. The URL the agent
+// sees stays the same; only the response body changes.
+function maybeRewriteToMarkdown(req: NextRequest): NextResponse | null {
+  const accept = req.headers.get('accept') || ''
+  if (!accept.includes('text/markdown')) return null
+
+  // Match /blog/{slug} or /en/blog/{slug}. Skip listing pages (just /blog).
+  const match = req.nextUrl.pathname.match(/^\/(?:en\/)?blog\/(.+)$/)
+  if (!match) return null
+
+  const url = req.nextUrl.clone()
+  url.pathname = `/api/blog/markdown/${match[1]}`
+  return NextResponse.rewrite(url)
+}
+
 export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+
+  // Markdown for Agents — must run before intl middleware so the rewrite
+  // bypasses locale routing entirely.
+  const markdownResponse = maybeRewriteToMarkdown(req)
+  if (markdownResponse) return markdownResponse
 
   // Only consider redirecting on the default-locale homepage. We don't touch
   // paths already under /en, or any blog/slug path that may not have an EN

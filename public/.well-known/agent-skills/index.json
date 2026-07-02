@@ -1,0 +1,29 @@
+{
+  "$schema": "https://agentskills.io/schemas/v0.2.0/index.json",
+  "version": "0.2.0",
+  "site": {
+    "name": "netFull's Blog",
+    "url": "https://netfull.top",
+    "description": "Tech blog focused on Pancake API integration guides, web tools, and personal finance reports for Vietnamese developers and SMBs."
+  },
+  "skills": [
+    {
+      "name": "qr-code-generator",
+      "type": "tool",
+      "description": "Generate downloadable QR codes from any text or URL. Configurable size, no rate limit on UI usage.",
+      "url": "https://netfull.top/tools/qr-generator"
+    },
+    {
+      "name": "facebook-page-info-lookup",
+      "type": "tool",
+      "description": "Extract Facebook fanpage/profile metadata from a URL: page_id (entity ID), actor_id (page-as-user ID), username, profile image, engagement stats. Includes trust signals for legitimacy checking. Public API.",
+      "url": "https://netfull.top/tools/fb-info"
+    },
+    {
+      "name": "shopee-affiliate-shortlink",
+      "type": "tool",
+      "description": "Generate Shopee Vietnam affiliate shortlinks from a product URL using Shopee's official an_redir template.",
+      "url": "https://netfull.top/tools/shopee-shortlink"
+    }
+  ]
+}
