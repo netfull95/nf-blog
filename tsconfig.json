@@ -42,7 +42,8 @@
     "**/*.json",
     ".contentlayer/generated",
     ".contentlayer/generated/**/*.json",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "app/.well-known/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }
