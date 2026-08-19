@@ -1,0 +1,327 @@
+---
+title: "Pancake API MCP — Đưa docs API và call live vào Claude Desktop / Cursor trong 5 phút"
+date: "2026-08-18"
+lastmod: "2026-08-18"
+language: "vi"
+translationKey: "pancake-api-mcp-guide"
+summary: "MCP server chính thức của Pancake đóng gói toàn bộ tài liệu API dưới dạng snapshot offline — search endpoint, đọc contract đầy đủ (kèm response schema đã expand $ref), payload webhook, và 11 guide hướng dẫn (auth, rate limit, webhook setup, best practice). Kết nối 1 lần vào Claude Desktop / Cursor / bất kỳ MCP client nào, AI đọc docs Pancake tự thân, không cần copy-paste. Bonus: cấu hình access token vào env → AI có thể gọi live API thật (list conversations, gửi tin nhắn, thống kê) với token đúng loại được attach tự động theo endpoint. Bài này hướng dẫn từ zero: cài Node.js, clone repo, build, config Claude Desktop + Cursor, ví dụ prompt thực tế, chế độ read-only, và troubleshooting."
+tags: ["Pancake", "API", "MCP", "Claude Desktop", "Cursor", "AI", "Pancake developer", "Tự động hoá"]
+draft: true
+---
+
+# Pancake API MCP — Đưa docs API và call live vào Claude Desktop / Cursor trong 5 phút
+
+> **TL;DR:** [`pancake-vn/pancake-api-mcp`](https://github.com/pancake-vn/pancake-api-mcp) là MCP server chính thức của Pancake — chạy Node local, đóng gói snapshot OpenAPI của **31 REST endpoint + 5 webhook + 11 guide**. Kết nối vào Claude Desktop / Cursor 1 lần, AI đọc docs Pancake tự thân (không cần bạn copy-paste). Cấu hình thêm `PANCAKE_PAGE_ACCESS_TOKEN` vào env → AI có thể call live Pancake API thật (list hội thoại, gửi tin nhắn, xem thống kê…). Token không bao giờ đi qua chat, đọc từ env, redacted trong log. Cài `PANCAKE_READ_ONLY=true` nếu chỉ cho AI đọc. Yêu cầu Node 18+, cài chưa đến 5 phút.
+
+Trong quá trình tích hợp Pancake API (đã có [series](/blog/gioi-thieu-pancake) khá đầy đủ), câu hỏi lặp lại nhiều nhất từ dev là:
+
+> "Bao nhiêu endpoint? Endpoint X trả về field gì? Webhook nào cho event Y? Auth thế nào?"
+
+Cách cũ: mở [developer.pancake.biz](https://developer.pancake.biz/), tìm, copy vào chat AI, hỏi. Lặp lại 20 lần/session.
+
+Cách mới: **MCP server**. AI tự đọc docs Pancake khi cần, không copy-paste. Và nếu cấu hình token, AI còn call được API thật để kiểm chứng câu trả lời.
+
+Bài này hướng dẫn từ đầu: MCP là gì, Pancake API MCP làm được gì, cài + config Claude Desktop / Cursor, ví dụ prompt, và chế độ an toàn.
+
+---
+
+## 1. MCP là gì (nếu bạn chưa quen)
+
+**Model Context Protocol (MCP)** là chuẩn mở của Anthropic cho phép AI assistant kết nối tới các "server" bên ngoài để lấy dữ liệu / thực thi hành động. Server có thể là:
+- Database (Postgres, SQLite, Redis)
+- File system (đọc/ghi file local)
+- API doc snapshot (như bài này)
+- API thật (call GitHub, Slack, Pancake…)
+
+Client là các app AI như **Claude Desktop, Cursor, Windsurf, Zed, VS Code Copilot Chat…** — càng ngày càng nhiều app hỗ trợ.
+
+Với Pancake API MCP: server là 1 process Node local trên máy bạn. Claude Desktop biết cách "nói chuyện" với nó qua stdio → khi bạn hỏi Claude về Pancake API, Claude gọi tools của server thay vì đoán từ training data.
+
+Ưu điểm quan trọng: **docs bundled offline** — không có internet vẫn tra được. Live call chỉ khi bạn cấu hình token và cho phép.
+
+---
+
+## 2. Pancake API MCP đóng gói cái gì?
+
+| Nhóm | Số lượng | Ví dụ |
+|---|---|---|
+| **REST endpoint** | 31 | Pages, Conversations, Messages, Statistics, Customers, Posts, Tags, Users, Call logs, Export, Contents, Chat Plugin |
+| **Webhook event** | 5 | `messaging`, `conversation`, `post`, `subscription`, `connect_status` — kèm payload schema + example |
+| **Guide** | 11 | Authentication, Rate limits, Recommended API flow, Webhook setup, Event types, Suspension rules, Best practices |
+
+Mỗi endpoint được lookup full contract: **parameters, request body, response schema với mọi `$ref` được expand sẵn** — không phải nhảy qua nhảy lại giữa các file YAML để hiểu 1 field lồng nhau.
+
+### 9 tools MCP server cung cấp
+
+| Tool | Input | Trả về |
+|---|---|---|
+| `search_docs` | `query`, `area?`, `limit?` | Danh sách matches xếp theo relevance + snippet — **bắt đầu ở đây** khi khám phá |
+| `list_endpoints` | `tag?`, `keyword?` | REST endpoints group theo tag |
+| `get_endpoint` | `id` (vd `"GET /pages/{page_id}/conversations"`) | Full contract dạng markdown |
+| `list_webhooks` | — | Tất cả webhook events kèm summary |
+| `get_webhook` | `event` (vd `messaging`) | Payload schema + example |
+| `list_guides` | — | Guide ids + titles |
+| `get_guide` | `id` (vd `authentication`) | Nội dung guide |
+| `auth_status` | — | Token nào đã cấu hình (masked) + env settings khác |
+| `call_endpoint` | `id`, `params?`, `body?` | **Gọi live Pancake API** — trả về HTTP status + response |
+
+Ngoài ra mỗi endpoint / webhook / guide còn expose dưới dạng **MCP resource** (`pancake-api://endpoint/…`) cho client hỗ trợ browse resource (Claude Desktop, Zed).
+
+---
+
+## 3. Cài đặt — 3 lệnh
+
+### Yêu cầu
+
+- **Node.js 18+** (kiểm tra: `node -v` → v18.x hoặc mới hơn)
+- **Git**
+- macOS / Windows / Linux đều được
+
+### Clone + build
+
+```bash
+git clone https://github.com/pancake-vn/pancake-api-mcp.git
+cd pancake-api-mcp
+npm install
+npm run build
+```
+
+Xong sẽ có `dist/index.js` — entry point của server.
+
+Ghi nhớ **absolute path** tới `dist/index.js` để dán vào config Claude/Cursor ở bước tiếp:
+
+```bash
+pwd    # ví dụ: /Users/you/dev/pancake-api-mcp
+# → path đầy đủ: /Users/you/dev/pancake-api-mcp/dist/index.js
+```
+
+---
+
+## 4. Cấu hình token (tuỳ chọn)
+
+**Chế độ mặc định (không cấu hình token) = docs-only, hoàn toàn offline.** AI chỉ đọc được docs, không call được API thật. Đủ cho 80% case tra cứu.
+
+Nếu muốn AI call thật, cấu hình 2 loại token:
+
+| Env var | Query param Pancake dùng | Cần cho | Cách lấy |
+|---|---|---|---|
+| `PANCAKE_USER_ACCESS_TOKEN` | `access_token` | 2 endpoint account-level (list pages, generate page token) | Pancake → **Account → Personal settings → API Access Token**. Có hạn ~90 ngày |
+| `PANCAKE_PAGE_ACCESS_TOKEN` | `page_access_token` | 24 endpoint page-level (conversations, messages, statistics, customers…) | Page → **Settings → Tools**, hoặc `POST /pages/{page_id}/generate_page_access_token`. **KHÔNG hết hạn** trừ khi regenerate |
+
+Xem thêm chi tiết cách lấy token trong [bài Webhook & API gửi tin nhắn](/blog/pancake-webhook-va-api-gui-tin-nhan#1-chu%E1%BA%A9n-b%E1%BB%8B-l%E1%BA%A5y-page-access-token).
+
+### Env vars phụ
+
+| Env var | Mặc định | Tác dụng |
+|---|---|---|
+| `PANCAKE_PAGE_ID` | — | Giá trị mặc định cho `page_id` — đỡ phải lặp lại khi call endpoint |
+| `PANCAKE_READ_ONLY` | `false` | Khi `true`, `call_endpoint` **CHỈ chấp nhận GET**, từ chối mọi write |
+| `PANCAKE_TIMEOUT_MS` | `30000` | Timeout cho live API call |
+
+> [!WARNING]
+> **Write được bật mặc định.** Khi có `PANCAKE_PAGE_ACCESS_TOKEN`, `call_endpoint` có thể **thật sự gửi tin nhắn cho khách, đổi tag, xoá dữ liệu**. Nếu chỉ muốn AI đọc → set `PANCAKE_READ_ONLY=true`. Token luôn đọc từ env, không nhận từ tool input, redacted trong mọi response và log.
+
+---
+
+## 5. Kết nối Claude Desktop
+
+Mở file config:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+Nếu file chưa tồn tại → tạo mới. Nội dung:
+
+```json
+{
+  "mcpServers": {
+    "pancake-api": {
+      "command": "node",
+      "args": ["/absolute/path/to/pancake-api-mcp/dist/index.js"],
+      "env": {
+        "PANCAKE_USER_ACCESS_TOKEN": "your-user-access-token",
+        "PANCAKE_PAGE_ACCESS_TOKEN": "your-page-access-token",
+        "PANCAKE_PAGE_ID": "optional-default-page-id",
+        "PANCAKE_READ_ONLY": "true"
+      }
+    }
+  }
+}
+```
+
+**Chạy offline (docs-only):** bỏ luôn block `env`:
+
+```json
+{
+  "mcpServers": {
+    "pancake-api": {
+      "command": "node",
+      "args": ["/absolute/path/to/pancake-api-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+**Restart Claude Desktop** → biểu tượng tool (búa/ổ cắm) xuất hiện dưới ô chat, click vào sẽ thấy tools của `pancake-api`.
+
+---
+
+## 6. Kết nối Cursor
+
+**Settings → MCP → Add new global MCP server**, hoặc trực tiếp sửa `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "pancake-api": {
+      "command": "node",
+      "args": ["/absolute/path/to/pancake-api-mcp/dist/index.js"],
+      "env": {
+        "PANCAKE_PAGE_ACCESS_TOKEN": "your-page-access-token"
+      }
+    }
+  }
+}
+```
+
+Reload window (Cmd/Ctrl+Shift+P → "Reload Window") → tool sẵn sàng trong Composer / Chat.
+
+**Windsurf, Zed, VS Code Copilot Chat** dùng schema tương tự — nhìn docs của từng client, phần thay đổi chỉ là đường dẫn file config.
+
+---
+
+## 7. Ví dụ prompt thực tế
+
+### Nhóm A — Tra cứu docs (không cần token)
+
+- *"Dùng docs Pancake, làm sao để authenticate?"*
+  → AI gọi `get_guide` với id `authentication`, trả về hướng dẫn 2 loại token
+- *"Endpoint nào list conversations của 1 page, tham số gì?"*
+  → AI gọi `search_docs "list conversations"` → chọn `GET /pages/{page_id}/conversations` → gọi `get_endpoint` → trình bày parameters, response schema
+- *"Payload webhook `messaging` trông thế nào?"*
+  → AI gọi `get_webhook "messaging"` → hiện schema + example JSON
+- *"Search docs Pancake tất cả liên quan đến tag."*
+  → AI gọi `search_docs "tag"` → list ra endpoint tag, guide tag flow
+
+### Nhóm B — Call live API (cần token)
+
+- *"Check giúp mình token Pancake đã set chưa."* → `auth_status`
+- *"List 60 hội thoại gần nhất của page 12345."* → `call_endpoint GET /pages/{page_id}/conversations`
+- *"Xem thống kê message của page trong 7 ngày qua."* → `call_endpoint GET /pages/{page_id}/statistics/message`
+- *"Gửi 'cảm ơn bạn đã đặt hàng' vào conversation X."* → `call_endpoint POST /pages/{page_id}/conversations/{conv_id}/messages` — **write action**, Claude Desktop sẽ prompt xác nhận trước khi thực hiện
+
+### Nhóm C — Kết hợp AI + docs (đây là điểm mạnh thực sự)
+
+- *"Build cho tôi Node.js server nhận webhook Pancake `messaging`, dedup theo `message.id`, reply lại 'Đã nhận'. Follow docs Pancake đúng contract."*
+  → AI đọc `get_webhook messaging` để biết payload, `get_endpoint POST /messages` để biết cách reply, viết code khớp với thực tế chứ không "đoán"
+- *"Sync khách hàng Pancake sang CRM nội bộ. Đọc docs `page-customers` và `list_conversations` giúp tôi thiết kế pipeline."*
+  → AI đọc endpoint pagination pattern, đề xuất cursor-based hoặc `since/until`, viết pseudo code
+
+Xem thêm ứng dụng cụ thể trong series:
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api)
+- [Đồng bộ khách hàng Pancake API](/blog/dong-bo-khach-hang-pancake-api-page-customers)
+- [Webhook Idempotency](/blog/pancake-webhook-idempotency-chong-trung-su-kien)
+
+---
+
+## 8. Bảo mật — 5 điểm cần nhớ
+
+1. **Token đọc từ env, KHÔNG nhận từ tool input** — không ai (kể cả người khác chat với Claude của bạn) inject token qua prompt được
+2. **Token redacted trong mọi response và error log** — dev tool inspector không nhìn thấy giá trị thật
+3. **Write cần xác nhận từ user** — Claude Desktop mặc định prompt "Allow / Deny" mỗi lần AI muốn call `call_endpoint` với write action
+4. **`PANCAKE_READ_ONLY=true`** khi bạn không cần AI write — chặn cứng ở tầng server, kể cả AI có confused vẫn không gửi được message thật
+5. **Test với `auth_status`** trước khi trust tool — verify token nào đã set, mode read-only đang bật hay tắt
+
+Nếu bạn share Claude Desktop với người khác (máy dùng chung), **luôn set READ_ONLY** và cân nhắc chỉ để `PANCAKE_USER_ACCESS_TOKEN` (chỉ 2 endpoint account-level, ít rủi ro hơn 24 endpoint page-level).
+
+---
+
+## 9. Troubleshooting nhanh
+
+### Không thấy `pancake-api` xuất hiện trong Claude Desktop
+
+- Verify JSON valid (thiếu dấu phẩy, thừa dấu ngoặc là fail)
+- Verify path absolute (không dùng `~` hoặc relative)
+- Verify `dist/index.js` tồn tại — chạy lại `npm run build`
+- Xem log Claude Desktop:
+  - macOS: `~/Library/Logs/Claude/mcp-server-pancake-api.log`
+  - Windows: `%APPDATA%\Claude\logs\mcp-server-pancake-api.log`
+
+### `auth_status` báo không có token dù đã set
+
+- Env vars trong `claude_desktop_config.json` chỉ áp dụng khi restart Claude → **quit hoàn toàn** rồi mở lại (không chỉ close window)
+- Cursor: reload window sau khi sửa `mcp.json`
+
+### AI trả sai info dù docs có
+
+- Ask lại explicitly: *"Dùng tool `get_endpoint` với id `GET /pages/…` xem contract chính xác."*
+- Docs có thể outdated so với behavior thực tế API — luôn verify với `call_endpoint` khi làm production
+
+### Update docs mới nhất
+
+Docs được bundled dạng snapshot. Khi maintainer sync spec mới:
+
+```bash
+cd pancake-api-mcp
+git pull
+npm install
+npm run build
+```
+
+Restart Claude/Cursor.
+
+---
+
+## 10. Dev + Inspect
+
+Nếu bạn muốn hack thêm hoặc debug:
+
+```bash
+npm run dev       # tsc --watch — hot recompile khi sửa TS
+npm run inspect   # mở MCP Inspector (browser UI) — test từng tool riêng lẻ, không cần Claude
+```
+
+MCP Inspector cực hữu ích khi verify: mở lên, kết nối tới `node dist/index.js`, click từng tool, xem input/output — không cần đoán qua chat.
+
+---
+
+## 11. Câu hỏi thường gặp
+
+**Q: MCP server có gửi data của tôi ra ngoài không?**
+A: Không. Server chạy 100% local trên máy bạn. Docs read từ file bundled trong repo. Chỉ `call_endpoint` mới gọi outbound tới `pages.fm` (Pancake API) — không có destination nào khác.
+
+**Q: Anthropic có thấy token của tôi qua Claude Desktop không?**
+A: Không. Token đọc từ env của process MCP server local. Claude Desktop chỉ gọi tool qua stdio và nhận response — token đã redacted. Prompt/response của bạn với Claude vẫn đi qua Anthropic như bình thường (đó là bản chất chat với LLM), nhưng token không nằm trong đó.
+
+**Q: MCP có replace được [Postman](/blog/lay-danh-sach-hoi-thoai-pancake-api) hay REST client khác không?**
+A: Không hẳn — MCP tối ưu cho use case AI-driven exploration. Khi bạn cần test 1 endpoint cụ thể với params phức tạp, verify response bytes → Postman/Insomnia/Bruno vẫn tốt hơn. Dùng song song: MCP để hiểu + prototype nhanh, REST client để test kỹ.
+
+**Q: Có cần API subscription trả tiền Pancake không?**
+A: Không cho phần đọc docs (offline hoàn toàn). Live call cần tài khoản Pancake có quyền API (Page Access Token có sẵn với hầu hết account admin — xem [bài Webhook & API](/blog/pancake-webhook-va-api-gui-tin-nhan)).
+
+**Q: Docs có bao gồm CRM (`crm.pancake.vn/api`) không?**
+A: Snapshot hiện tại focus vào **Chat product** (pages.fm) — 31 REST endpoint + 5 webhook đều thuộc kênh Chat. CRM cluster có API tách biệt (xem [giới thiệu Pancake CRM API](/blog/gioi-thieu-pancake-crm-api)), chưa nằm trong MCP server này. Nếu cần → mở issue trên repo hoặc dùng generic MCP client kết hợp docs CRM đọc thủ công.
+
+**Q: MCP có support event streaming (server-sent events) từ webhook không?**
+A: Không — webhook là inbound tới server của bạn, không phải outbound từ Pancake tới AI. Nếu muốn AI phản ứng theo event realtime, cần build webhook receiver riêng + tool MCP đọc từ queue/DB.
+
+---
+
+## 12. Tổng kết
+
+Pancake API MCP giải quyết đúng 2 nỗi đau cụ thể của dev tích hợp:
+- **Docs friction**: hết copy-paste OpenAPI vào chat AI. Docs bundled offline, search + fetch full contract trong 1 tool call.
+- **Feedback loop**: với token, AI verify được câu trả lời bằng cách call live thay vì đoán. Sai thì tự nhận ra ngay, không đợi bạn deploy code mới phát hiện.
+
+Cost thấp: 5 phút cài đặt, 0 đồng, không lock-in (repo MIT, tự host).
+Rủi ro thấp: default offline, write cần confirm, `READ_ONLY` chặn cứng, token redacted.
+
+Khuyến nghị: **luôn bắt đầu ở mode offline (không set token)** để tra cứu docs → khi cần call thật thì thêm token + set `READ_ONLY=true` một thời gian trước khi mở write.
+
+Repo: [`github.com/pancake-vn/pancake-api-mcp`](https://github.com/pancake-vn/pancake-api-mcp) — bug/feature request mở issue trực tiếp.
+
+Tham khảo thêm:
+- [Model Context Protocol — Introduction](https://modelcontextprotocol.io)
+- [Pancake API developer docs](https://developer.pancake.biz/)
+- [Webhook & API gửi tin nhắn Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan)
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api)
+- [3 phương án truy xuất data Pancake vào CRM](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm)

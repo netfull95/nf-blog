@@ -1,0 +1,327 @@
+---
+title: "Pancake API MCP — Ship Pancake API docs + live calls into Claude Desktop / Cursor in 5 minutes"
+date: "2026-08-19"
+lastmod: "2026-08-19"
+language: "en"
+translationKey: "pancake-api-mcp-guide"
+summary: "Pancake's official MCP server bundles the entire API documentation as an offline snapshot — search endpoints, pull a single endpoint's full contract (with every $ref expanded), inspect webhook payloads, and read the 11 guides (auth, rate limits, webhook setup, best practices). Wire it once into Claude Desktop / Cursor / any MCP client and your AI can read Pancake docs on its own — no more copy-paste. Bonus: configure access tokens as env vars and the assistant can hit the live Pancake API for real (list conversations, send messages, stats), with the right token attached automatically per endpoint. This post walks from zero: install Node, clone, build, wire up Claude Desktop + Cursor, real-world prompts, read-only mode, and troubleshooting."
+tags: ["Pancake", "API", "MCP", "Claude Desktop", "Cursor", "AI", "Pancake developer", "Automation"]
+draft: true
+---
+
+# Pancake API MCP — Ship Pancake API docs + live calls into Claude Desktop / Cursor in 5 minutes
+
+> **TL;DR:** [`pancake-vn/pancake-api-mcp`](https://github.com/pancake-vn/pancake-api-mcp) is Pancake's official MCP server — a Node process that runs locally and ships an OpenAPI snapshot of **31 REST endpoints + 5 webhooks + 11 guides**. Wire it into Claude Desktop / Cursor once and your AI reads Pancake docs on its own (no more copy-paste). Add `PANCAKE_PAGE_ACCESS_TOKEN` to the env block and the assistant can hit the real Pancake API (list conversations, send messages, pull stats…). Tokens never travel through chat, are loaded from the environment, and are redacted from every log. Set `PANCAKE_READ_ONLY=true` if you only want the AI to read. Requires Node 18+, takes under 5 minutes to install.
+
+When integrating with the Pancake API (we've built a decent [series](/en/blog/introducing-pancake) on it), the question devs ask most often is:
+
+> "How many endpoints are there? What fields does endpoint X return? Which webhook fires for event Y? How do I auth?"
+
+The old way: open [developer.pancake.biz](https://developer.pancake.biz/), scroll, copy into chat, ask the AI. Repeat 20 times per session.
+
+The new way: **an MCP server**. The AI reads Pancake docs itself when it needs to, no copy-paste. And with tokens configured, it can even call the real API to verify its own answers.
+
+This post covers everything from scratch: what MCP is, what Pancake API MCP does, how to install and configure it in Claude Desktop / Cursor, real-world prompts, and safety modes.
+
+---
+
+## 1. What MCP is (in case you're new)
+
+**Model Context Protocol (MCP)** is Anthropic's open standard for connecting AI assistants to external "servers" that provide data or execute actions. A server can be:
+- A database (Postgres, SQLite, Redis)
+- A file system (read/write local files)
+- An API documentation snapshot (like this one)
+- A live API (call GitHub, Slack, Pancake…)
+
+Clients are AI apps like **Claude Desktop, Cursor, Windsurf, Zed, VS Code Copilot Chat…** — the list keeps growing.
+
+With Pancake API MCP, the server is a local Node process on your machine. Claude Desktop talks to it over stdio — when you ask Claude about the Pancake API, Claude calls the server's tools instead of guessing from training data.
+
+Key advantage: **docs are bundled offline** — lookups work without internet. Live calls only happen when you configure tokens and grant permission.
+
+---
+
+## 2. What the Pancake API MCP bundles
+
+| Group | Count | Examples |
+|---|---|---|
+| **REST endpoints** | 31 | Pages, Conversations, Messages, Statistics, Customers, Posts, Tags, Users, Call logs, Export, Contents, Chat Plugin |
+| **Webhook events** | 5 | `messaging`, `conversation`, `post`, `subscription`, `connect_status` — each with payload schema + example |
+| **Guides** | 11 | Authentication, Rate limits, Recommended API flow, Webhook setup, Event types, Suspension rules, Best practices |
+
+Every endpoint returns its full contract: **parameters, request body, response schema with every `$ref` already expanded** — no more jumping between YAML files to understand one nested field.
+
+### The 9 tools the server exposes
+
+| Tool | Input | Returns |
+|---|---|---|
+| `search_docs` | `query`, `area?`, `limit?` | Ranked matches with type, id, and a snippet — **start here** when exploring |
+| `list_endpoints` | `tag?`, `keyword?` | REST endpoints grouped by tag |
+| `get_endpoint` | `id` (e.g. `"GET /pages/{page_id}/conversations"`) | Full endpoint contract as markdown |
+| `list_webhooks` | — | All webhook events with summaries |
+| `get_webhook` | `event` (e.g. `messaging`) | Payload schema + example |
+| `list_guides` | — | Guide ids + titles |
+| `get_guide` | `id` (e.g. `authentication`) | Guide content |
+| `auth_status` | — | Which tokens are configured (masked), plus other env settings |
+| `call_endpoint` | `id`, `params?`, `body?` | **Live call** to Pancake API — HTTP status + response |
+
+Each endpoint / webhook / guide is also exposed as an MCP **resource** (`pancake-api://endpoint/…`) for clients that browse resources (Claude Desktop, Zed).
+
+---
+
+## 3. Install — 3 commands
+
+### Requirements
+
+- **Node.js 18+** (check with `node -v` → should print v18.x or newer)
+- **Git**
+- macOS / Windows / Linux all work
+
+### Clone + build
+
+```bash
+git clone https://github.com/pancake-vn/pancake-api-mcp.git
+cd pancake-api-mcp
+npm install
+npm run build
+```
+
+This produces `dist/index.js`, the server entry point.
+
+Grab the **absolute path** to `dist/index.js` — you'll paste it into Claude / Cursor config in the next step:
+
+```bash
+pwd    # e.g. /Users/you/dev/pancake-api-mcp
+# → full path: /Users/you/dev/pancake-api-mcp/dist/index.js
+```
+
+---
+
+## 4. Configure tokens (optional)
+
+**Default mode (no tokens) = docs-only, fully offline.** The AI can read docs but can't call the live API. This covers 80% of lookup use cases.
+
+For live calls, configure two token types:
+
+| Env var | Pancake query param | Needed for | How to get it |
+|---|---|---|---|
+| `PANCAKE_USER_ACCESS_TOKEN` | `access_token` | 2 account-level endpoints (list pages, generate a page token) | Pancake → **Account → Personal settings → API Access Token**. Valid up to ~90 days |
+| `PANCAKE_PAGE_ACCESS_TOKEN` | `page_access_token` | 24 page-level endpoints (conversations, messages, statistics, customers…) | Page → **Settings → Tools**, or `POST /pages/{page_id}/generate_page_access_token`. **Does not expire** unless you regenerate |
+
+See detailed token acquisition steps in the [Webhook & Send Message API post](/en/blog/pancake-webhook-and-api-send-message#1-preparation-obtain-a-page-access-token).
+
+### Optional extras
+
+| Env var | Default | Effect |
+|---|---|---|
+| `PANCAKE_PAGE_ID` | — | Default value for `page_id` — so you don't repeat it on every call |
+| `PANCAKE_READ_ONLY` | `false` | When `true`, `call_endpoint` **accepts GET only** and refuses every write |
+| `PANCAKE_TIMEOUT_MS` | `30000` | Timeout for live API calls |
+
+> [!WARNING]
+> **Writes are enabled by default.** With `PANCAKE_PAGE_ACCESS_TOKEN` set, `call_endpoint` can **actually send messages to customers, change tags, delete data**. If you only want reads, set `PANCAKE_READ_ONLY=true`. Tokens are read from the environment, never accepted as tool input, and redacted from every response and log.
+
+---
+
+## 5. Wire up Claude Desktop
+
+Open the config file:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+Create it if it doesn't exist. Content:
+
+```json
+{
+  "mcpServers": {
+    "pancake-api": {
+      "command": "node",
+      "args": ["/absolute/path/to/pancake-api-mcp/dist/index.js"],
+      "env": {
+        "PANCAKE_USER_ACCESS_TOKEN": "your-user-access-token",
+        "PANCAKE_PAGE_ACCESS_TOKEN": "your-page-access-token",
+        "PANCAKE_PAGE_ID": "optional-default-page-id",
+        "PANCAKE_READ_ONLY": "true"
+      }
+    }
+  }
+}
+```
+
+**Offline (docs-only) mode:** drop the entire `env` block:
+
+```json
+{
+  "mcpServers": {
+    "pancake-api": {
+      "command": "node",
+      "args": ["/absolute/path/to/pancake-api-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+**Restart Claude Desktop** → the tool icon (hammer/plug) appears below the chat input; click it to see `pancake-api` tools.
+
+---
+
+## 6. Wire up Cursor
+
+**Settings → MCP → Add new global MCP server**, or edit `~/.cursor/mcp.json` directly:
+
+```json
+{
+  "mcpServers": {
+    "pancake-api": {
+      "command": "node",
+      "args": ["/absolute/path/to/pancake-api-mcp/dist/index.js"],
+      "env": {
+        "PANCAKE_PAGE_ACCESS_TOKEN": "your-page-access-token"
+      }
+    }
+  }
+}
+```
+
+Reload the window (Cmd/Ctrl+Shift+P → "Reload Window") → tools are available in Composer / Chat.
+
+**Windsurf, Zed, VS Code Copilot Chat** use the same schema — check each client's docs; only the config file path changes.
+
+---
+
+## 7. Real-world prompts
+
+### Group A — Docs lookup (no token required)
+
+- *"Using the Pancake docs, how do I authenticate?"*
+  → AI calls `get_guide` with id `authentication`, returns the two-token guide
+- *"What endpoint lists a page's conversations, and what parameters does it take?"*
+  → AI calls `search_docs "list conversations"` → picks `GET /pages/{page_id}/conversations` → calls `get_endpoint` → walks through parameters and response schema
+- *"What does the `messaging` webhook payload look like?"*
+  → AI calls `get_webhook "messaging"` → shows schema + example JSON
+- *"Search Pancake docs for anything about tags."*
+  → AI calls `search_docs "tag"` → lists tag endpoints, tag-flow guides
+
+### Group B — Live API calls (token required)
+
+- *"Check my Pancake token setup."* → `auth_status`
+- *"List the last 60 conversations of page 12345."* → `call_endpoint GET /pages/{page_id}/conversations`
+- *"Show me this page's message stats for the last 7 days."* → `call_endpoint GET /pages/{page_id}/statistics/message`
+- *"Send 'thanks for your order' to conversation X."* → `call_endpoint POST /pages/{page_id}/conversations/{conv_id}/messages` — **write action**, Claude Desktop will prompt for confirmation before executing
+
+### Group C — AI + docs together (the real power)
+
+- *"Build a Node.js server that receives Pancake `messaging` webhooks, dedupes by `message.id`, and replies with 'Received'. Follow Pancake docs contract exactly."*
+  → AI calls `get_webhook messaging` to learn the payload, `get_endpoint POST /messages` to learn how to reply, then writes code that matches reality instead of guessing
+- *"Sync Pancake customers to our internal CRM. Read the `page-customers` and `list_conversations` docs and design the pipeline for me."*
+  → AI reads the pagination pattern, suggests cursor-based or `since/until`, drafts pseudo code
+
+More concrete applications in the series:
+- [Get Pancake Conversations List API](/en/blog/get-pancake-conversations-list-api)
+- [Pancake Page Customers API — Sync to CRM](/en/blog/pancake-page-customers-api-sync-to-crm)
+- [Pancake Webhook Idempotency](/blog/pancake-webhook-idempotency-chong-trung-su-kien) *(Vietnamese)*
+
+---
+
+## 8. Security — 5 things to remember
+
+1. **Tokens are loaded from the environment, NEVER accepted as tool input** — no one (including anyone chatting with your Claude) can inject a token via prompt
+2. **Tokens are redacted from every response and error log** — even the dev tool inspector won't see the real value
+3. **Writes require user confirmation** — Claude Desktop defaults to a "Allow / Deny" prompt each time the AI wants to call `call_endpoint` with a write action
+4. **`PANCAKE_READ_ONLY=true`** when you don't want writes — enforced at the server layer; even if the AI is confused, it cannot send a real message
+5. **Test with `auth_status`** before trusting the tool — verify which tokens are set and whether read-only mode is on
+
+If you share Claude Desktop with others (shared machine), **always set `READ_ONLY`**, and consider limiting the config to `PANCAKE_USER_ACCESS_TOKEN` only (2 account-level endpoints — much smaller blast radius than 24 page-level ones).
+
+---
+
+## 9. Quick troubleshooting
+
+### `pancake-api` doesn't show up in Claude Desktop
+
+- Verify the JSON is valid (a missing comma or extra brace breaks it)
+- Verify the path is absolute (no `~`, no relative paths)
+- Verify `dist/index.js` exists — re-run `npm run build`
+- Check the Claude Desktop log:
+  - macOS: `~/Library/Logs/Claude/mcp-server-pancake-api.log`
+  - Windows: `%APPDATA%\Claude\logs\mcp-server-pancake-api.log`
+
+### `auth_status` reports no token even though you set one
+
+- Env vars in `claude_desktop_config.json` only apply on restart → **quit fully** and reopen (not just close the window)
+- Cursor: reload the window after editing `mcp.json`
+
+### AI returns wrong info even though docs have it
+
+- Ask explicitly: *"Use the `get_endpoint` tool with id `GET /pages/…` to fetch the exact contract."*
+- Docs can lag behind actual API behavior — always verify with `call_endpoint` for production work
+
+### Updating to the latest docs
+
+Docs ship as a bundled snapshot. When the maintainer syncs a new spec:
+
+```bash
+cd pancake-api-mcp
+git pull
+npm install
+npm run build
+```
+
+Restart Claude / Cursor.
+
+---
+
+## 10. Dev + Inspect
+
+If you want to hack on it or debug:
+
+```bash
+npm run dev       # tsc --watch — hot recompile as you edit TS
+npm run inspect   # open the MCP Inspector (browser UI) — test each tool in isolation, no Claude required
+```
+
+MCP Inspector is extremely useful for verification: launch it, connect to `node dist/index.js`, click through tools, watch input/output — no need to guess through chat.
+
+---
+
+## 11. FAQ
+
+**Q: Does the MCP server send my data anywhere?**
+A: No. The server runs 100% locally. Docs read from files bundled in the repo. Only `call_endpoint` makes outbound calls to `pages.fm` (Pancake API) — no other destinations.
+
+**Q: Can Anthropic see my tokens via Claude Desktop?**
+A: No. Tokens are read from the local MCP server process's environment. Claude Desktop only calls tools over stdio and receives responses — tokens are already redacted. Your prompts/responses with Claude still travel to Anthropic (that's the nature of chatting with an LLM), but the tokens are not in them.
+
+**Q: Does MCP replace [Postman](/en/blog/get-pancake-conversations-list-api) or other REST clients?**
+A: Not really — MCP shines at AI-driven exploration. When you need to test one endpoint with complex params and verify response bytes → Postman / Insomnia / Bruno are still better. Use both in parallel: MCP to understand and prototype fast, REST client for hard testing.
+
+**Q: Do I need a paid Pancake API subscription?**
+A: Not for reading docs (100% offline). Live calls require a Pancake account with API permissions (Page Access Tokens are available to most admin accounts — see the [Webhook & API post](/en/blog/pancake-webhook-and-api-send-message)).
+
+**Q: Do the docs cover CRM (`crm.pancake.vn/api`)?**
+A: The current snapshot focuses on the **Chat product** (pages.fm) — all 31 REST endpoints + 5 webhooks are Chat cluster. The CRM cluster has a separate API (see [Introducing Pancake CRM API](/en/blog/introducing-pancake-crm-api)); it's not in this MCP server yet. If you need it → open an issue on the repo, or use a generic MCP client alongside CRM docs read manually.
+
+**Q: Does the MCP support event streaming (server-sent events) from webhooks?**
+A: No — webhooks are inbound to your server, not outbound from Pancake to the AI. If you want the AI to react to realtime events, build a webhook receiver yourself + an MCP tool that reads from your queue / DB.
+
+---
+
+## 12. Wrap-up
+
+Pancake API MCP solves exactly two pain points integrators actually feel:
+- **Docs friction**: no more copy-pasting OpenAPI into an AI chat. Docs bundled offline, search + fetch full contract in a single tool call.
+- **Feedback loop**: with tokens, the AI verifies its own answers by making live calls instead of guessing. It notices when it's wrong immediately, not after you've deployed code.
+
+Low cost: 5 minutes to install, zero dollars, no lock-in (MIT repo, self-host).
+Low risk: offline by default, writes need confirmation, `READ_ONLY` is a hard gate, tokens are redacted.
+
+Recommendation: **start in offline mode (no token)** for docs lookup → when you need live calls, add a token and set `READ_ONLY=true` for a while before you unlock writes.
+
+Repo: [`github.com/pancake-vn/pancake-api-mcp`](https://github.com/pancake-vn/pancake-api-mcp) — bug reports and feature requests via issues.
+
+Further reading:
+- [Model Context Protocol — Introduction](https://modelcontextprotocol.io)
+- [Pancake API developer docs](https://developer.pancake.biz/)
+- [Pancake Webhook & Send Message API](/en/blog/pancake-webhook-and-api-send-message)
+- [Get Pancake Conversations List API](/en/blog/get-pancake-conversations-list-api)
+- [3 ways to extract Pancake data into your CRM](/en/blog/3-ways-to-extract-pancake-data-into-your-crm)

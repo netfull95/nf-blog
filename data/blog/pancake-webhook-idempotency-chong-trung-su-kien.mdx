@@ -1,0 +1,319 @@
+---
+title: "Pancake Webhook Idempotency — Chống xử lý trùng sự kiện khi retry"
+date: "2026-07-15"
+lastmod: "2026-07-15"
+language: "vi"
+translationKey: "pancake-webhook-idempotency"
+summary: "Khi tích hợp webhook Pancake vào chatbot hoặc CRM, cùng 1 tin nhắn có thể được đẩy về nhiều lần do retry của Pancake hoặc do server bạn timeout. Bài này giải đáp 4 câu hỏi kinh điển: field nào là ID duy nhất và ổn định của event, retry có giữ nguyên ID không, 2 tin cùng nội dung có ID khác nhau không, ID unique toàn hệ thống hay chỉ trong 1 page — kèm 3 pattern chống trùng ở tầng ứng dụng (Redis SETNX, PostgreSQL UNIQUE, in-memory LRU) với code Node.js chạy được ngay."
+tags: ["Pancake", "Webhook", "API", "Chatbot", "Tự động hoá", "Tích hợp", "Pancake developer"]
+---
+
+# Pancake Webhook Idempotency — Chống xử lý trùng sự kiện khi retry
+
+> **TL;DR:** Pancake sẽ **retry webhook** nếu server bạn trả về lỗi hoặc timeout — nghĩa là **cùng 1 tin nhắn có thể tới endpoint của bạn nhiều lần**. Nếu chatbot không có cơ chế idempotency, khách sẽ nhận **reply trùng**, đơn hàng sẽ bị **tạo 2 lần**, CRM sẽ có **lead trùng**. Field an toàn nhất để làm khóa idempotency là **`message.id`** (mỗi tin nhắn có ID duy nhất, ổn định qua retry). Bài này trình bày 3 pattern chống trùng tương ứng với 3 quy mô traffic: **Redis SETNX** (khuyến nghị cho production), **PostgreSQL UNIQUE constraint** (khi đã có DB), **in-memory LRU** (cho service nhỏ, single instance).
+
+Trong quá trình support khách hàng tích hợp Pancake, có 4 câu hỏi lặp đi lặp lại từ các team dev khi build chatbot hoặc kết nối webhook về hệ thống nội bộ:
+
+1. Trong payload webhook, **field nào là ID duy nhất và ổn định** của từng tin nhắn/event?
+2. Khi cùng một webhook được Pancake **gửi lại do retry**, ID đó có được giữ nguyên không?
+3. Hai tin nhắn khác nhau nhưng có **cùng nội dung** trong cùng một cuộc hội thoại có ID khác nhau không?
+4. ID này là **unique toàn hệ thống** hay chỉ scope trong 1 page/conversation?
+
+Nếu bạn cũng đang xử lý những câu hỏi này khi build chatbot, hệ thống ticket, hoặc pipeline sync về CRM, bài này là dành cho bạn.
+
+Nếu chưa quen với cơ chế webhook Pancake, đọc trước [bài Webhook & API gửi tin nhắn](/blog/pancake-webhook-va-api-gui-tin-nhan) để hiểu payload cơ bản.
+
+---
+
+## 1. Vì sao webhook bị gọi trùng?
+
+Có 3 nguyên nhân phổ biến, tất cả đều **không phải bug** — mà là hành vi mặc định của mọi hệ thống webhook (bao gồm Pancake):
+
+### A. Server bạn trả 200 CHẬM
+
+Pancake gửi POST, chờ response trong vài giây. Nếu server bạn xử lý logic phức tạp (gọi OpenAI, ghi DB, gửi email) TRƯỚC khi trả 200, Pancake coi là timeout → **retry** → event thứ 2 tới nơi trong khi event thứ 1 vẫn đang chạy.
+
+### B. Server bạn trả về lỗi 5xx
+
+Deploy bị lỗi, DB down 30s, out-of-memory. Pancake retry theo backoff → khi service bạn recover, hàng loạt event trùng đổ về cùng lúc.
+
+### C. Chính hạ tầng Pancake retry an toàn
+
+Với các event quan trọng (new_message, new_order), Pancake có thể chủ động retry để đảm bảo **at-least-once delivery** — nghĩa là **đảm bảo tới ít nhất 1 lần**, chấp nhận trường hợp tới nhiều lần. Ngược lại là **at-most-once** (có thể mất event) — không phù hợp cho use case tin nhắn khách.
+
+> [!WARNING]
+> Đừng cố sửa bằng cách **tăng timeout** hoặc **tắt retry**. At-least-once là design đúng cho webhook. Bạn cần build idempotency ở phía nhận — đó là trách nhiệm của consumer, không phải producer.
+
+---
+
+## 2. Field nào làm khóa idempotency? — `message.id`
+
+Field duy nhất và ổn định trong payload webhook Pancake là `message.id`. Cụ thể:
+
+| Đặc tính | Giá trị |
+|---|---|
+| **Duy nhất trong toàn hệ thống Pancake?** | Có — format `{page_id}_{internal_id}` đảm bảo không đụng độ giữa các page |
+| **Ổn định qua retry?** | Có — cùng 1 tin nhắn được đẩy lại thì `message.id` giữ nguyên |
+| **2 tin cùng nội dung, cùng conversation?** | ID khác nhau — mỗi lần khách nhắn tạo ra 1 message record mới |
+| **Có bị đổi khi edit/recall tin?** | Không — Pancake bắn event khác (`message_edited`, `message_deleted`) với cùng `message.id` gốc |
+
+Trả lời trực tiếp cho 4 câu hỏi ở đầu bài:
+
+**Q1: Field nào unique và stable?** → `message.id`. Không dùng `conversation_id` (nhiều message cùng conversation trùng), không dùng `created_time` (2 tin cùng giây trùng nhau).
+
+**Q2: Retry có giữ nguyên ID không?** → Có, đó là toàn bộ điểm cần đảm bảo — nếu ID đổi mỗi retry thì không thể idempotent được.
+
+**Q3: 2 tin cùng nội dung có ID khác không?** → Có, khác. Content không tham gia vào việc sinh ID.
+
+**Q4: Unique toàn hệ thống hay chỉ trong page?** → Format `{page_id}_{internal_id}` unique **toàn hệ thống**. Bạn KHÔNG cần compose thêm `page_id` khi lưu vào DB.
+
+> [!TIP]
+> Bắt payload thực tế của shop bạn bằng [webhook.site](https://webhook.site) trong 5 phút để xác nhận field name khớp với bài này. Pancake có thể có variation nhỏ giữa các kênh (Messenger vs Zalo vs TikTok) — luôn verify với payload thực tế.
+
+---
+
+## 3. Ba pattern chống trùng — chọn theo quy mô
+
+### Pattern A — Redis SETNX (khuyến nghị cho production)
+
+**Khi nào dùng:** Traffic từ vài trăm tin/phút trở lên, đã có Redis trong stack, cần low-latency check (~1ms).
+
+**Nguyên lý:** `SET key value NX EX 86400` — chỉ set nếu key chưa tồn tại, TTL 24h. Nếu Redis trả `nil` nghĩa là đã xử lý → bỏ qua. Trả `OK` nghĩa là chưa → tiếp tục xử lý.
+
+```javascript
+const express = require('express')
+const Redis = require('ioredis')
+const redis = new Redis(process.env.REDIS_URL)
+const app = express()
+app.use(express.json())
+
+app.post('/webhook/pancake', async (req, res) => {
+  // Trả 200 NGAY để không kích retry — theo best practice ở
+  // /blog/pancake-webhook-va-api-gui-tin-nhan
+  res.status(200).json({ received: true })
+
+  const messageId = req.body.message?.id
+  if (!messageId) return // event không có message.id — bỏ qua hoặc xử lý riêng
+
+  // SETNX với TTL 24h. Đủ dài để cover mọi retry window của Pancake,
+  // đủ ngắn để Redis không phình vô hạn.
+  const acquired = await redis.set(
+    `pancake:webhook:${messageId}`,
+    '1',
+    'EX',
+    86400,
+    'NX'
+  )
+
+  if (acquired !== 'OK') {
+    console.log(`Skip duplicate: ${messageId}`)
+    return
+  }
+
+  // Từ đây trở xuống chỉ chạy 1 lần cho mỗi message.id
+  await processMessage(req.body)
+})
+
+async function processMessage(payload) {
+  // Gọi OpenAI, tạo lead trong CRM, gửi reply... tuỳ business logic
+}
+
+app.listen(3000)
+```
+
+**Ưu điểm:** Nhanh, có thể share giữa nhiều instance của service (horizontal scaling), TTL tự dọn.
+**Nhược điểm:** Cần thêm Redis. Nếu Redis down, nên **fail-open** (skip check, chấp nhận trùng còn hơn drop event) — chốt tùy business.
+
+### Pattern B — PostgreSQL UNIQUE constraint (khi đã có DB)
+
+**Khi nào dùng:** Bạn đã lưu tất cả message vào DB rồi, không muốn thêm Redis. Traffic vừa phải (dưới 100 tin/giây).
+
+**Nguyên lý:** Dựa vào UNIQUE index của DB để reject insert trùng. Ưu điểm là idempotency và persistence là **cùng 1 hành động** — không có window race giữa "check trùng" và "lưu".
+
+```sql
+CREATE TABLE pancake_messages (
+  message_id TEXT PRIMARY KEY,
+  page_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  raw_payload JSONB NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processed_at TIMESTAMPTZ
+);
+```
+
+```javascript
+const { Pool } = require('pg')
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+
+app.post('/webhook/pancake', async (req, res) => {
+  res.status(200).json({ received: true })
+
+  const messageId = req.body.message?.id
+  if (!messageId) return
+
+  try {
+    // ON CONFLICT DO NOTHING — nếu duplicate thì insert trả về 0 row
+    const result = await pool.query(
+      `INSERT INTO pancake_messages (message_id, page_id, conversation_id, raw_payload)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (message_id) DO NOTHING
+       RETURNING message_id`,
+      [messageId, req.body.page_id, req.body.conversation_id, req.body]
+    )
+
+    if (result.rowCount === 0) {
+      console.log(`Skip duplicate: ${messageId}`)
+      return
+    }
+
+    await processMessage(req.body)
+
+    await pool.query(
+      `UPDATE pancake_messages SET processed_at = NOW() WHERE message_id = $1`,
+      [messageId]
+    )
+  } catch (err) {
+    console.error('Handler error:', err)
+    // Không trả 5xx — đã trả 200 ở trên. Log lại và có retry nội bộ nếu cần.
+  }
+})
+```
+
+**Ưu điểm:** Không cần thêm hạ tầng, dữ liệu vào DB là ledger đầy đủ có thể replay lại khi bug.
+**Nhược điểm:** Insert overhead cao hơn Redis SETNX. Nếu drop DB record vì compliance/GDPR, bạn mất luôn dedup key.
+
+### Pattern C — In-memory LRU (chỉ cho single instance)
+
+**Khi nào dùng:** Service demo, chatbot cho shop nhỏ, single-process Node.js/Python, không sharding.
+
+**Nguyên lý:** Dùng LRU cache size cố định trong RAM. Đơn giản nhưng **không share giữa instance**, restart là mất cache → có thể xử lý trùng khi deploy.
+
+```javascript
+const { LRUCache } = require('lru-cache')
+
+const seen = new LRUCache({
+  max: 10000,          // giữ tối đa 10k message ID gần nhất
+  ttl: 1000 * 60 * 60, // 1h
+})
+
+app.post('/webhook/pancake', async (req, res) => {
+  res.status(200).json({ received: true })
+
+  const messageId = req.body.message?.id
+  if (!messageId) return
+
+  if (seen.has(messageId)) {
+    console.log(`Skip duplicate: ${messageId}`)
+    return
+  }
+  seen.set(messageId, true)
+
+  await processMessage(req.body)
+})
+```
+
+**Ưu điểm:** Zero infrastructure, code ngắn.
+**Nhược điểm:** Không scale được. Chỉ dùng cho MVP hoặc dev environment.
+
+---
+
+## 4. So sánh nhanh 3 pattern
+
+| Tiêu chí | Redis SETNX | Postgres UNIQUE | In-memory LRU |
+|---|---|---|---|
+| **Latency check** | ~1ms | ~5-10ms | ~0.01ms |
+| **Persistence** | 24h TTL | Vĩnh viễn (đến khi xoá row) | Restart là mất |
+| **Multi-instance safe** | Có | Có | **Không** |
+| **Cần thêm hạ tầng** | Redis | Đã có nếu dùng DB | Không |
+| **Ledger để debug/replay** | Không (chỉ có key) | Có (full payload) | Không |
+| **Phù hợp quy mô** | Production, mọi scale | dưới 100 tin/giây | MVP, dev |
+
+---
+
+## 5. Lưu ý khi triển khai
+
+### 5.1. Luôn trả 200 TRƯỚC khi xử lý logic
+
+Đây là quy tắc số 1. Nếu bạn xử lý xong mới trả 200:
+- Business logic 3-5 giây → Pancake timeout → retry → dedup phải làm việc liên tục
+- Business logic bị lỗi → trả 5xx → Pancake retry lũy tiến → càng nhiều event trùng
+
+Trả 200 ngay ở đầu handler, đưa logic vào **background queue** (BullMQ, Sidekiq, Cloud Tasks) là pattern chuẩn.
+
+### 5.2. TTL của khóa idempotency nên ≥ retry window của Pancake
+
+Pancake không công bố chính xác retry window (có thể 30 phút, có thể vài giờ tuỳ event). **TTL 24h là an toàn** cho mọi trường hợp. Đừng để 5 phút — retry chậm sẽ lọt qua.
+
+### 5.3. Idempotency KHÁC ordering
+
+Dedup đảm bảo mỗi event xử lý 1 lần, KHÔNG đảm bảo thứ tự. Nếu logic của bạn cần đúng thứ tự (vd: message_edited phải sau new_message của cùng ID), bạn cần **thêm sort theo `created_time`** trong background worker, không thể chỉ dựa vào thứ tự webhook tới.
+
+### 5.4. Không phải mọi event đều có `message.id`
+
+Một số event webhook Pancake không thuộc kênh message (vd: order events, tag events). Với các event này:
+- Ưu tiên field ID riêng của entity đó (`order.id`, `conversation.id + event_type + timestamp` combined)
+- Hoặc build composite key: `${event_type}:${entity_id}:${created_time}` — nhớ verify với payload thực tế trước
+
+### 5.5. Fail-open vs fail-closed khi Redis/DB down
+
+- **Fail-open** (skip dedup check, tiếp tục xử lý): Rủi ro tin nhắn/lead trùng, nhưng không mất event. Phù hợp khi downstream chấp nhận trùng.
+- **Fail-closed** (reject, để Pancake retry): An toàn về dedup, nhưng nếu Redis down lâu, backlog retry của Pancake có thể đè server khi recover.
+
+Không có đáp án đúng cho mọi trường hợp — cân theo business cost của "trùng" vs "chậm".
+
+---
+
+## 6. Debug: verify pattern chạy đúng
+
+Sau khi deploy, cách nhanh nhất để verify dedup hoạt động:
+
+1. Tạm bật log `console.log(messageId, 'processed')` trong branch xử lý và `console.log(messageId, 'skipped')` trong branch dedup.
+2. Gửi 1 tin từ tài khoản test → kỳ vọng 1 dòng `processed`.
+3. Chờ 10-30s, kiểm tra log — nếu Pancake retry, bạn sẽ thấy vài dòng `skipped` với cùng `messageId`. **Đó là bằng chứng cơ chế hoạt động đúng**.
+4. Nếu chỉ thấy `processed` nhiều lần (không có `skipped`) → dedup không hit — check TTL, check key format, check Redis connection.
+
+---
+
+## 7. Câu hỏi thường gặp
+
+**Q: Có thể dùng `created_time` của message làm dedup key không?**
+A: Không nên. 2 tin nhắn khác nhau trong 2 conversation cùng thời điểm sẽ có cùng `created_time` → false positive (bỏ tin đúng).
+
+**Q: Pancake có ký (sign) payload webhook giống Stripe/Facebook không?**
+A: Cơ chế signature webhook của Pancake chưa được document đầy đủ ở public API. Cách bảo mật an toàn nhất hiện tại là **whitelist IP của Pancake** ở tầng firewall/nginx, hoặc dùng **path bí mật** dài (`/webhook/pancake/abc123xyz-random-40-char`).
+
+**Q: Nếu tôi build multi-tenant, mỗi khách hàng 1 workspace, key có cần scope theo tenant không?**
+A: `message.id` đã unique global. Nhưng nếu bạn muốn cô lập namespace (an toàn khi Redis share nhiều app), prefix key: `tenant:${tenantId}:message:${messageId}`.
+
+**Q: Retry của Pancake có exponential backoff không?**
+A: Không được document chi tiết. Best practice là **assume có** và build dedup như bài này — bạn không cần biết backoff cụ thể vẫn xử lý đúng.
+
+**Q: Có API để manually re-play 1 event không?**
+A: Không có endpoint public. Nếu bỏ lỡ event (webhook down 30 phút chẳng hạn), phương án backup là **poll [Get Conversations API](/blog/lay-danh-sach-hoi-thoai-pancake-api) theo `updated_at`** để đồng bộ lại.
+
+---
+
+## 8. Tổng kết
+
+Idempotency không phải là "nice to have" — là **bắt buộc** khi làm chatbot hoặc CRM sync với Pancake. Chi phí implement thấp (10-20 dòng code) nhưng phòng được:
+
+- Khách nhận reply trùng → mất trust
+- Đơn hàng trùng → gọi khách xác nhận huỷ → mất công + mất trust
+- Lead trùng trong CRM → sales gọi nhầm 2 lần → mất trust
+
+Checklist trước khi lên production:
+
+- [ ] Trả 200 ngay ở đầu handler, đẩy logic vào background
+- [ ] Dùng `message.id` (hoặc equivalent cho non-message event) làm khóa dedup
+- [ ] TTL ≥ 24h
+- [ ] Chọn 1 trong 3 pattern (Redis / Postgres / LRU) phù hợp quy mô
+- [ ] Log rõ processed vs skipped để debug
+- [ ] Xử lý fail-open/fail-closed khi hạ tầng dedup down
+
+Bài tiếp theo trong series: **Track nguồn khách hàng qua Webhook Pancake** — làm sao biết khách vào từ ad nào, post nào, campaign nào (`referral`, `messaging_referrals`, `post_id`, `ad_id`).
+
+Tham khảo thêm:
+- [Webhook & API gửi tin nhắn Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan) — payload cơ bản
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api) — fallback khi lỡ webhook
+- [3 phương án truy xuất data Pancake vào CRM](/blog/3-phuong-an-truy-xuat-data-pancake-day-vao-crm) — chiến lược tổng thể
+- [Pancake developer docs](https://developer.pancake.biz/)

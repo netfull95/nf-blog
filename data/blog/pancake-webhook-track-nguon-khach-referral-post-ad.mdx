@@ -1,0 +1,183 @@
+---
+title: "Xác định nguồn khách vào Facebook Page qua Webhook Pancake — referral, ad_id"
+date: "2026-07-15"
+lastmod: "2026-07-15"
+language: "vi"
+translationKey: "pancake-conversation-source-tracking"
+summary: "Khách nhắn vào Facebook Page qua Messenger nhưng đội marketing không biết khách đến từ quảng cáo nào, từ đường link nào — mất khả năng đo hiệu quả chiến dịch. Bài này chỉ ra 3 cách khách vào Messenger của Fanpage (quảng cáo Click-to-Messenger, đường link m.me có tham số ref, và tin nhắn tự nhiên), map với từng trường dữ liệu trong webhook Pancake, cùng 2 phương án đo nguồn: tin cậy trực tiếp webhook và chủ động cài ref vào mọi đường link m.me. Nêu rõ vì sao không nên dựa vào Get Conversations API để suy ra nguồn cho hội thoại inbox."
+tags: ["Pancake", "Webhook", "API", "Facebook Messenger", "Ads", "Tích hợp", "Pancake developer"]
+---
+
+# Xác định nguồn khách vào Facebook Page qua Webhook Pancake — referral, ad_id
+
+> **TL;DR:** Bài này nói riêng cho **Fanpage Facebook kết nối Pancake** (không áp dụng cho Zalo, TikTok, Instagram Direct — mỗi nền tảng có cơ chế riêng). Khi khách nhắn tin vào Messenger của Fanpage, Pancake webhook có thể chứa trường **`referral`** (khi khách vào từ link `m.me` có tham số `ref`) hoặc trường có **`ad_id`** (khi khách vào từ quảng cáo Click-to-Messenger). Nếu khách tự tìm Fanpage và nhắn thẳng thì webhook **không chứa thông tin nguồn** — không có cách nào biết. Cách chủ động nhất để phủ được nhiều kênh nhất là **luôn dùng link `m.me/tenpage?ref=...`** ở mọi nơi ngoài Facebook (website, email, QR code, bio TikTok/Zalo…).
+
+Trong quá trình hỗ trợ khách hàng tích hợp Pancake vào hệ thống CRM/BI nội bộ, có 2 câu hỏi lặp lại nhiều lần:
+
+> "Bên mình có API/webhook lấy được tin nhắn khách hàng đến từ nguồn nào không, ví dụ tin đến từ bài viết nào hay Fanpage nào ấy?"
+>
+> "Webhook Pancake đẩy về website có option kèm `referral` / `messaging_referrals` không?"
+
+Câu trả lời ngắn: **Có, nhưng phụ thuộc vào cách khách bắt đầu hội thoại.** Cùng một khách nhắn vào Fanpage nhưng nếu đi qua quảng cáo thì webhook có `ad_id`, nếu đi qua link `m.me` có `ref` thì có `referral`, nếu tự mở Messenger nhắn thì không có gì.
+
+Bài này giúp đội dev + marketing có cái nhìn đầy đủ để **thiết kế đo lường đúng ngay từ đầu** thay vì phát hiện thiếu nguồn khi chiến dịch đã chạy.
+
+Nếu chưa quen với webhook Pancake, đọc trước [bài Webhook & API gửi tin nhắn](/blog/pancake-webhook-va-api-gui-tin-nhan). Kết hợp với [bài Webhook Idempotency](/blog/pancake-webhook-idempotency-chong-trung-su-kien) để xử lý retry an toàn.
+
+---
+
+## 1. 3 cách khách vào Messenger của Fanpage
+
+Trước khi nói về trường dữ liệu trong webhook, phải hiểu **khách vào bằng cách nào** — vì Meta chỉ gắn thông tin nguồn vào một số cách vào, không phải tất cả.
+
+| # | Cách khách vào | Ví dụ | Có nguồn trong webhook? |
+|---|---|---|---|
+| 1 | **Quảng cáo Click-to-Messenger** | Quảng cáo Facebook/Instagram có nút "Nhắn tin" chuyển thẳng sang Messenger | Có — `ad_id` (và `ref` nếu chiến dịch có đặt) |
+| 2 | **Link `m.me` có tham số `?ref=`** | `m.me/tenpage?ref=summer_sale` | Có — `referral.ref = "summer_sale"` |
+| 3 | **Tin nhắn tự nhiên** | Khách tự tìm Fanpage và bấm "Nhắn tin" | **Không có** — chỉ có thông tin khách |
+
+Trường hợp khách **bình luận** vào bài viết của Fanpage được xử lý ở cơ chế khác (event `new_comment` với `post_id`), không phải cơ chế `referral` cho hội thoại inbox. Bài này tập trung vào hội thoại inbox.
+
+> [!TIP]
+> Muốn TỐI ĐA hoá tỉ lệ có nguồn → **luôn dùng link `m.me` kèm `?ref=`** ở mọi nơi ngoài Facebook (website, email, bio TikTok, QR code in ấn). `ref` là chuỗi tự do do bạn đặt — có thể mã hoá thông tin chiến dịch: `?ref=fb_ig_summer_20260715`.
+
+---
+
+## 2. Trường dữ liệu nguồn trong webhook
+
+### 2.1. `referral` — từ link `m.me`
+
+Khi khách bấm vào `m.me/tenpage?ref=summer_sale` và nhắn tin lần đầu, webhook Pancake sẽ có đại loại như sau (nên kiểm chứng lại với payload thực tế):
+
+```json
+{
+  "event_type": "new_message",
+  "page_id": "123456789",
+  "conversation_id": "conv_abc123",
+  "customer": { "id": "cust_001", "name": "Nguyễn Văn A" },
+  "message": { "id": "msg_xyz", "text": "Cho mình hỏi giá..." },
+  "referral": {
+    "ref": "summer_sale",
+    "source": "SHORTLINK",
+    "type": "OPEN_THREAD"
+  }
+}
+```
+
+**Trường đáng lưu:**
+- `referral.ref` — chuỗi bạn đặt trong link, dùng làm mã chiến dịch
+- `referral.source` — nguồn dẫn: `SHORTLINK` (link `m.me`), `MESSENGER_CODE` (mã QR Messenger), `DISCOVER_TAB`…
+- `referral.type` — kiểu: `OPEN_THREAD` (khách bấm mở), `ORIGIN` (bắt đầu hội thoại)
+
+### 2.2. Quảng cáo Click-to-Messenger
+
+Với quảng cáo chạy điểm đến = Messenger, khách bấm quảng cáo → mở khung chat → nhắn tin. Payload webhook có trường riêng (một số phiên bản Pancake gộp vào `referral` với `source: "ADS"`):
+
+```json
+{
+  "referral": {
+    "source": "ADS",
+    "type": "OPEN_THREAD",
+    "ad_id": "1234567890123",
+    "ref": "campaign_summer_ig"
+  }
+}
+```
+
+**Trường đáng lưu:**
+- `ad_id` — mã quảng cáo Facebook. Có thể gọi Facebook Marketing API để lấy tên chiến dịch/adset (cần token quản lý quảng cáo, không phải Page Access Token)
+- `ref` — nếu đội chạy quảng cáo có đặt tham số ref trong URL của quảng cáo
+
+### 2.3. Tin nhắn tự nhiên — không có nguồn
+
+Khách tự tìm Fanpage và nhắn. Webhook chỉ có `customer` + `message`, **không có** `referral`, **không có** `ad_id`. Đây là trường hợp **không thể xác định nguồn** — coi như `source = "direct"` và chấp nhận.
+
+---
+
+## 3. Hai phương án đo nguồn — chọn theo yêu cầu
+
+### Phương án A — Tin cậy trực tiếp webhook
+
+Nếu webhook có `referral` hoặc `ad_id`, tin ngay. Đơn giản, độ trễ thấp, phù hợp phần lớn trường hợp.
+
+**Lưu ý:** Với `ad_id`, nếu cần tên chiến dịch / adset để hiển thị lên báo cáo, phải gọi thêm Facebook Marketing API (không thuộc phạm vi Pancake). Không có bước này thì báo cáo chỉ có mã số, khó đọc.
+
+### Phương án B — Cài `ref` vào mọi link `m.me` (khuyến nghị cho marketing)
+
+Cách chủ động nhất — kiểm soát 100% thông tin nguồn ngay từ khâu tạo link:
+
+- Website "Chat với shop" → `m.me/tenpage?ref=web_homepage_cta`
+- Bản tin email → `m.me/tenpage?ref=email_2026_07_promo`
+- Mã QR in ấn offline → `m.me/tenpage?ref=poster_hanoi_q3`
+- Bio Zalo/TikTok → `m.me/tenpage?ref=tiktok_bio_2026`
+
+Đặt `ref` theo cấu trúc để tách lại được: `ref = {kênh}_{chiến_dịch}_{ngày}`. Trên CRM bạn có thể tách ra báo cáo "khách theo kênh", "khách theo chiến dịch", "khách theo ngày".
+
+**Ưu điểm lớn:** Không phụ thuộc vào việc Meta có gắn nguồn hay không, không phụ thuộc phiên bản payload Pancake — bạn tự kiểm soát chuỗi ref.
+
+**Nhược điểm:** Không cover được quảng cáo Click-to-Messenger (khách bấm quảng cáo không đi qua link `m.me`). Với quảng cáo vẫn phải parse `ad_id` từ webhook.
+
+### Không dùng: Get Conversations API để "suy" nguồn hội thoại inbox
+
+Có ý tưởng gọi [Get Conversations API v2](/blog/lay-danh-sach-hoi-thoai-pancake-api) để lấy `post_ids` của hội thoại rồi từ đó suy ra khách đến từ bài viết nào. **Cách này không phù hợp cho hội thoại inbox** vì:
+
+- `post_ids` của hội thoại **chỉ có giá trị với hội thoại phát sinh từ bình luận bài viết**
+- Hội thoại inbox thuần (khách nhắn qua Messenger, dù từ `m.me` hay quảng cáo) **không có `post_ids`** — trường này rỗng hoặc không có
+- Suy ra "khách đến từ post" cho hội thoại inbox sẽ ra **kết quả sai**
+
+Chỉ dùng `post_ids` khi bạn đang xử lý riêng nhóm hội thoại bình luận, không dùng làm nguồn dữ liệu cho hội thoại inbox.
+
+---
+
+## 4. Kiểm tra khi webhook không có nguồn như kỳ vọng
+
+Danh sách kiểm tra khi thử 1 quảng cáo hoặc 1 link `m.me` mà không thấy nguồn trong payload:
+
+- [ ] **Xác nhận cách khách vào thực tế.** Nếu bạn thử với chính tài khoản của mình mà đã từng nhắn Fanpage → Meta có thể không gắn `referral` (đã có thread cũ). Thử bằng tài khoản chưa từng nhắn Fanpage.
+- [ ] **Xác nhận link `m.me` có `?ref=` không bị lược đi.** Một số app (Zalo, iOS Messages) có thể bỏ query params khi người dùng bấm. Kiểm bằng cách dán link vào trình duyệt trực tiếp.
+- [ ] **Xác nhận webhook đã được bật ở Fanpage đó.** Vào Pancake → Cài đặt → Công cụ, xem webhook URL đã đăng ký chưa. Xem [bài Webhook & API](/blog/pancake-webhook-va-api-gui-tin-nhan#2-cấu-hình-webhook--nhận-sự-kiện-realtime-từ-pancake) để mở tính năng.
+- [ ] **Bắt payload thực tế qua webhook.site trong 5 phút** để đối chiếu tên trường. Pancake có khác biệt nhỏ giữa các phiên bản.
+- [ ] **Nếu là quảng cáo**, chắc chắn điểm đến của quảng cáo là "Nhắn tin" (Messages), không phải "Website" hay "Post Engagement". Chỉ điểm đến Messenger mới có `ad_id` trong webhook.
+
+---
+
+## 5. Câu hỏi thường gặp
+
+**Q: Quảng cáo đã chạy 2 tuần rồi, nay mới bật webhook — có lấy lại nguồn của khách cũ không?**
+A: **Không.** Nguồn chỉ được gắn tại thời điểm khách bấm — nếu webhook chưa bật thì event đó không được đẩy về hệ thống của bạn, không có nơi nào để lấy lại. Với hội thoại inbox cũ, **không có API nào trả về `ad_id` / `referral` retro** (khác với hội thoại bình luận vẫn có `post_ids`). Rút kinh nghiệm: bật webhook và test đủ **trước khi** launch chiến dịch quảng cáo.
+
+**Q: `ref` chỉ có ở event đầu tiên hay có ở mọi event của hội thoại?**
+A: Chỉ ở event đầu tiên (event khách mở thread). Tin nhắn sau đó trong cùng hội thoại **không có** `referral` — bạn phải lưu ngay từ tin đầu vào cơ sở dữ liệu.
+
+**Q: Có giới hạn độ dài `ref` không?**
+A: Meta giới hạn 2KB cho query params `m.me`. Khuyến nghị giữ `ref` ≤ 100 ký tự, mã hoá gọn, tránh khoảng trắng và ký tự đặc biệt.
+
+**Q: Zalo / TikTok / Instagram Direct có `referral` giống như trên không?**
+A: Cơ chế `referral` trong bài này **là của Facebook Messenger**. Zalo có mô hình khác (`recent_button` từ Zalo OA). TikTok Message Ads có `ad_id` riêng qua TikTok Business API. Không dùng chung schema — mỗi kênh phải xử lý riêng.
+
+**Q: Nếu chỉ dùng Botcake (chatbot của Pancake), không có webhook riêng, làm sao đo nguồn?**
+A: Botcake có giao diện cấu hình luồng theo `ref` — vào Botcake → Setting → Ref → tạo luồng riêng cho mỗi mã ref. Không cần webhook, nhưng dữ liệu nguồn nằm trong báo cáo Botcake, chưa xuất ra CRM ngoài được.
+
+**Q: Làm sao ghép `ad_id` với tên chiến dịch để hiển thị lên báo cáo?**
+A: Cần Facebook Marketing API với System User Access Token có quyền `ads_read`. Gọi: `GET https://graph.facebook.com/v19.0/{ad_id}?fields=name,campaign{name},adset{name}`. Nên cache kết quả — tên chiến dịch ít đổi.
+
+---
+
+## 6. Tổng kết
+
+Đo nguồn khách qua Pancake webhook trên Fanpage Facebook là **có làm được nhưng phải thiết kế ngay từ đầu**:
+
+- **Với quảng cáo Click-to-Messenger**: có sẵn `ad_id` trong webhook — đọc ra, ghép tên qua Marketing API
+- **Với các kênh còn lại (ngoài Facebook)**: **luôn dùng link `m.me` kèm `?ref=`** — tự kiểm soát 100%
+- **Với khách tự nhắn**: chấp nhận `source = "direct"`, không có gì để cứu
+- **Không suy nguồn hội thoại inbox từ `post_ids`** — trường đó chỉ có ý nghĩa với hội thoại phát sinh từ bình luận
+
+Đầu tư nửa ngày cài `ref` chuẩn cho mọi kênh + parse `ad_id` từ webhook → đội marketing có báo cáo hiệu quả theo chiến dịch, đội sales biết khách đến từ đâu để chào đúng ngữ cảnh. Trước khi bỏ tiền chạy quảng cáo, hãy chắc chắn cơ chế đo đã sẵn sàng.
+
+Tham khảo thêm:
+- [Webhook & API gửi tin nhắn Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan) — payload cơ bản
+- [Pancake Webhook Idempotency](/blog/pancake-webhook-idempotency-chong-trung-su-kien) — chống trùng khi retry
+- [Lấy danh sách hội thoại Pancake API](/blog/lay-danh-sach-hoi-thoai-pancake-api) — dùng cho hội thoại bình luận
+- [Đồng bộ khách hàng Pancake API](/blog/dong-bo-khach-hang-pancake-api-page-customers) — đồng bộ thông tin khách
+- [Meta Messenger Platform — Referral](https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_referrals/)
+- [Pancake developer docs](https://developer.pancake.biz/)
