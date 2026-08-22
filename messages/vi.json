@@ -94,9 +94,9 @@
     },
     "shopee": {
       "title": "Shopee link cùng nF",
-      "shortDescription": "Dán link sản phẩm Shopee để tạo affiliate link theo template chính thức của Shopee.",
+      "shortDescription": "Dán link Shopee bất kỳ → nhận ngay affiliate link chuẩn 2026 trong 1 giây. Cảm ơn bạn dùng link mua hàng — hoa hồng nhỏ giúp mình duy trì blog và tools miễn phí cho cộng đồng 🙏",
       "metaTitle": "Shopee link cùng nF",
-      "metaDescription": "Tạo Shopee affiliate link từ link sản phẩm gốc. Dùng template public an_redir của Shopee, không cần đăng nhập.",
+      "metaDescription": "Công cụ tạo Shopee affiliate link miễn phí — dán URL sản phẩm bất kỳ, tự động làm sạch tracking params, xuất ra link chuẩn an_redir 2026 giúp Shopee ghi nhận commission đúng. Nếu bạn mua hàng qua link, mình nhận một khoản hoa hồng nhỏ để duy trì blog + tools miễn phí cho cộng đồng dev/marketer Việt Nam. Cảm ơn bạn rất nhiều 💛",
       "inputLabel": "Link sản phẩm Shopee",
       "inputPlaceholder": "vd: https://shopee.vn/Bo-Quan-Ao-Nam-...-i.123.456",
       "submitBtn": "Tạo affiliate link",
