@@ -32,6 +32,18 @@ type SavedLink = {
   itemId?: string
   productName?: string
   imageUrl?: string
+  // Buyer-facing product info from addlivetag preview. Commission-related
+  // fields (commission, sellerComFinal, isXtra, cap*, etc.) are intentionally
+  // NOT stored or displayed — those are internal metrics, not for visitors.
+  shopName?: string
+  price?: number
+  originalPrice?: number
+  discountPercent?: number
+  flashSale?: boolean
+  stockAvailable?: number
+  sales?: number
+  rating?: number
+  minPrice?: number
   createdAt: number
   // 'pending' when a preview fetch hasn't been attempted yet, 'failed' when
   // addlivetag returned no data (product delisted / not in their DB) so we
@@ -84,8 +96,13 @@ const ShopeeShortlinkGenerator = () => {
   // Runs once per mount; failed items are marked so we don't retry every
   // render. Uses the public addlivetag CORS-enabled API — no proxy needed.
   useEffect(() => {
+    // Refetch when the item is missing either image OR price — the latter
+    // means it was saved before the price/rating/sales fields were added.
     const pending = history.filter(
-      (h) => h.itemId && !h.imageUrl && h.previewStatus !== 'failed'
+      (h) =>
+        h.itemId &&
+        (!h.imageUrl || !h.price) &&
+        h.previewStatus !== 'failed'
     )
     if (!pending.length) return
 
@@ -98,19 +115,74 @@ const ShopeeShortlinkGenerator = () => {
           )
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           const json = (await res.json()) as {
-            productInfo?: { productName?: string | null; imageUrl?: string | null }
+            productInfo?: {
+              productName?: string | null
+              imageUrl?: string | null
+              shopName?: string | null
+              price?: number | null
+              sales?: number | null
+              rating?: string | number | null
+              latestPriceHistory?: {
+                originalPrice?: number | null
+                discountPercent?: number | null
+                flashSale?: boolean | null
+                stockAvailable?: number | null
+              } | null
+              priceStats?: { minPrice?: number | null } | null
+            }
           }
-          const productName = json.productInfo?.productName || undefined
-          const imageUrl = json.productInfo?.imageUrl || undefined
+          const info = json.productInfo || {}
+          const preview = {
+            productName: info.productName || undefined,
+            imageUrl: info.imageUrl || undefined,
+            shopName: info.shopName || undefined,
+            price: typeof info.price === 'number' && info.price > 0 ? info.price : undefined,
+            sales: typeof info.sales === 'number' && info.sales > 0 ? info.sales : undefined,
+            rating:
+              info.rating != null && info.rating !== ''
+                ? Number(info.rating)
+                : undefined,
+            originalPrice:
+              info.latestPriceHistory?.originalPrice &&
+              info.latestPriceHistory.originalPrice > 0
+                ? info.latestPriceHistory.originalPrice
+                : undefined,
+            discountPercent:
+              info.latestPriceHistory?.discountPercent &&
+              info.latestPriceHistory.discountPercent > 0
+                ? info.latestPriceHistory.discountPercent
+                : undefined,
+            flashSale: info.latestPriceHistory?.flashSale === true || undefined,
+            stockAvailable:
+              typeof info.latestPriceHistory?.stockAvailable === 'number'
+                ? info.latestPriceHistory.stockAvailable
+                : undefined,
+            minPrice:
+              typeof info.priceStats?.minPrice === 'number' && info.priceStats.minPrice > 0
+                ? info.priceStats.minPrice
+                : undefined,
+          }
+          const gotAnything = Object.values(preview).some((v) => v !== undefined)
           if (cancelled) return
           setHistory((prev) => {
             const next = prev.map((h) =>
               h.id === item.id
-                ? productName || imageUrl
+                ? gotAnything
                   ? {
                       ...h,
-                      productName: h.productName || productName,
-                      imageUrl: h.imageUrl || imageUrl,
+                      // Only overwrite fields the item doesn't have yet, so a
+                      // user-edited productName wouldn't get clobbered on refetch
+                      productName: h.productName || preview.productName,
+                      imageUrl: h.imageUrl || preview.imageUrl,
+                      shopName: h.shopName || preview.shopName,
+                      price: h.price ?? preview.price,
+                      sales: h.sales ?? preview.sales,
+                      rating: h.rating ?? preview.rating,
+                      originalPrice: h.originalPrice ?? preview.originalPrice,
+                      discountPercent: h.discountPercent ?? preview.discountPercent,
+                      flashSale: h.flashSale ?? preview.flashSale,
+                      stockAvailable: h.stockAvailable ?? preview.stockAvailable,
+                      minPrice: h.minPrice ?? preview.minPrice,
                       previewStatus: undefined,
                     }
                   : { ...h, previewStatus: 'failed' as const }
@@ -426,6 +498,66 @@ const HistoryList = ({
               >
                 {item.productName || item.cleanUrl}
               </p>
+
+              {/* Price row: current price (bold) + strikethrough original +
+                  discount % badge + flash sale badge. Show only when we have
+                  addlivetag preview data — no clutter for missing fields. */}
+              {item.price ? (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+                  <span className="font-semibold text-orange-600 dark:text-orange-400">
+                    {formatVND(item.price)}
+                  </span>
+                  {item.originalPrice && item.originalPrice > item.price ? (
+                    <span className="text-xs text-gray-400 line-through">
+                      {formatVND(item.originalPrice)}
+                    </span>
+                  ) : null}
+                  {item.discountPercent && item.discountPercent > 0 ? (
+                    <span className="rounded-sm bg-red-100 px-1 py-0.5 text-[10px] font-semibold text-red-600 dark:bg-red-900/40 dark:text-red-300">
+                      -{item.discountPercent}%
+                    </span>
+                  ) : null}
+                  {item.flashSale ? (
+                    <span className="rounded-sm bg-orange-100 px-1 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                      🔥 Flash
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Trust row: rating · sold · shop name. Each item conditional. */}
+              {item.rating || item.sales || item.shopName ? (
+                <div className="flex flex-wrap items-center gap-x-2 text-xs text-gray-500 dark:text-gray-400">
+                  {item.rating ? (
+                    <span>⭐ {item.rating.toFixed(1)}</span>
+                  ) : null}
+                  {item.sales ? (
+                    <span>{t('salesCount', { n: formatCompactNumber(item.sales) })}</span>
+                  ) : null}
+                  {item.shopName ? <span>· {item.shopName}</span> : null}
+                </div>
+              ) : null}
+
+              {/* Urgency hints: low stock warning + price floor comparison.
+                  Both are conditional — only render when actionable. */}
+              {(item.stockAvailable != null && item.stockAvailable > 0 && item.stockAvailable < 50) ||
+              (item.minPrice && item.price && item.minPrice < item.price) ? (
+                <div className="flex flex-wrap items-center gap-x-2 text-xs">
+                  {item.stockAvailable != null &&
+                  item.stockAvailable > 0 &&
+                  item.stockAvailable < 50 ? (
+                    <span className="text-amber-600 dark:text-amber-400">
+                      ⚠ {t('stockWarning', { n: item.stockAvailable })}
+                    </span>
+                  ) : null}
+                  {item.minPrice && item.price && item.minPrice < item.price ? (
+                    <span className="text-gray-500 dark:text-gray-400">
+                      📉 {t('priceMinHint', { price: formatVND(item.minPrice) })}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
               <code className="block truncate text-xs text-gray-500 dark:text-gray-400">
                 {item.shortLink}
               </code>
@@ -464,6 +596,23 @@ const HistoryList = ({
       </ul>
     </div>
   )
+}
+
+// Format Vietnamese Dong: 122200 → "₫122.200"
+const VND_FORMATTER = new Intl.NumberFormat('vi-VN', {
+  style: 'currency',
+  currency: 'VND',
+  maximumFractionDigits: 0,
+})
+function formatVND(n: number): string {
+  return VND_FORMATTER.format(n)
+}
+
+// Format large integers compactly: 1234 → "1.234", 12500 → "12,5k", 1_200_000 → "1,2tr"
+function formatCompactNumber(n: number): string {
+  if (n < 1_000) return String(n)
+  if (n < 1_000_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}tr`
 }
 
 // Compact relative-time formatter — "5m ago", "2h ago", "3d ago"
