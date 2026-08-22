@@ -113,10 +113,13 @@
       "subIdPlaceholder": "vd: blog-spring2026-fb-organic-promo",
       "subIdHint": "Tối đa 5 giá trị, phân tách bằng dấu '-'. Bỏ qua nếu không cần track.",
       "expandedFromLabel": "Đã tự động mở rộng từ shortlink",
+      "sanitizedToLabel": "Đã làm sạch link (bỏ tracking params) thành",
       "errorExpandFailed": "Không thể mở rộng shortlink. Thử dùng URL sản phẩm đầy đủ thay vì link rút gọn.",
       "errorTitle": "Tạo link thất bại",
       "errorEmpty": "Vui lòng nhập link Shopee.",
+      "errorInvalidUrl": "URL không hợp lệ. Kiểm tra lại định dạng.",
       "errorNotShopee": "URL phải là link shopee.vn / shp.ee.",
+      "errorNotProductUrl": "Chỉ hỗ trợ link sản phẩm cụ thể (vd shopee.vn/product/ID/ID hoặc shopee.vn/{slug}-i.ID.ID). Không hỗ trợ link shop, category, search hoặc universal link.",
       "errorNotConfigured": "Admin chưa set SHOPEE_AFFILIATE_ID trong .env trên server.",
       "errorRateLimited": "Bạn gửi quá nhanh. Thử lại sau {seconds}s.",
       "errorUnknown": "Lỗi không xác định. Thử lại sau."

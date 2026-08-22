@@ -113,10 +113,13 @@
       "subIdPlaceholder": "e.g. blog-spring2026-fb-organic-promo",
       "subIdHint": "Up to 5 values separated by '-'. Leave empty if you don't need tracking.",
       "expandedFromLabel": "Auto-expanded from shortlink",
+      "sanitizedToLabel": "Cleaned link (stripped tracking params) to",
       "errorExpandFailed": "Could not expand the shortlink. Try the full product URL instead.",
       "errorTitle": "Failed to generate link",
       "errorEmpty": "Please enter a Shopee URL.",
+      "errorInvalidUrl": "Invalid URL. Please check the format.",
       "errorNotShopee": "URL must be a shopee.vn / shp.ee link.",
+      "errorNotProductUrl": "Only specific product URLs are supported (e.g. shopee.vn/product/ID/ID or shopee.vn/{slug}-i.ID.ID). Shop / category / search / universal links are not accepted.",
       "errorNotConfigured": "Admin hasn't set SHOPEE_AFFILIATE_ID in the server's .env.",
       "errorRateLimited": "Too many submissions. Please retry in {seconds}s.",
       "errorUnknown": "Unknown error. Try again later."

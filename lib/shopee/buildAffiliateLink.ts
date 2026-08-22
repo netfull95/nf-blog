@@ -1,60 +1,48 @@
 // Build a Shopee affiliate redirect URL using Shopee's documented public
 // template (no auth, no session, no upstream call required):
 //
-//   https://s.shopee.vn/an_redir?origin_link=<encoded>&affiliate_id=<id>&sub_id=<subIds>
+//   https://s.shopee.<tld>/an_redir?origin_link=<encoded>&affiliate_id=<id>&sub_id=<subIds>
 //
 // Source: https://help.shopee.vn/portal/10/article/172955
+//         https://data.addlivetag.com/shopee/aff-link.html  (2026 rules)
 //
-// The output URL is itself the "shortlink" for affiliate tracking purposes —
-// the s.shopee.vn host handles redirect + commission attribution. Users may
-// further shorten it via bit.ly etc. if desired.
-
-const SHOPEE_HOSTS = ['shopee.vn', 'shp.ee', 'shope.ee']
+// Input contract: `originalUrl` MUST already be a CLEAN canonical product URL
+// (no `xptdk`, `sp_atk`, `utm_*`, `gads_*` params, and pointing at a real
+// product page — not a shop / category / search). Callers should run the
+// URL through `sanitizeShopeeUrl()` first; passing a dirty URL here breaks
+// attribution and Shopee will silently drop the commission.
 
 // Public affiliate publisher ID. Not a secret — every shortlink the tool emits
 // embeds this in the URL anyway. Hardcoded so the tool keeps working across
 // environments without per-deploy env setup.
 const SHOPEE_AFFILIATE_ID = '17323120332'
 
-export type BuildError =
-  | { kind: 'NOT_SHOPEE' }
-  | { kind: 'EMPTY' }
+export type BuildError = { kind: 'EMPTY' }
 
 export type BuildResult =
   | { ok: true; affiliateLink: string; originalLink: string }
   | { ok: false; error: BuildError }
 
-export function isShopeeUrl(input: string): boolean {
-  try {
-    const u = new URL(input)
-    const host = u.hostname.toLowerCase()
-    return SHOPEE_HOSTS.some((h) => host === h || host.endsWith('.' + h))
-  } catch {
-    return false
-  }
-}
-
 // subIds: up to 5 free-form tracking values, joined with '-'. Empty values
 // are preserved as empty slots so users can target a specific position
 // (e.g. only sub_id #3) by passing ['', '', 'campaign-x', '', ''].
-export function buildAffiliateLink(originalUrl: string, subIds: string[] = []): BuildResult {
-  const url = originalUrl.trim()
+export function buildAffiliateLink(cleanUrl: string, subIds: string[] = []): BuildResult {
+  const url = cleanUrl.trim()
   if (!url) return { ok: false, error: { kind: 'EMPTY' } }
-  if (!isShopeeUrl(url)) return { ok: false, error: { kind: 'NOT_SHOPEE' } }
 
-  // Users typically paste URLs straight from the browser address bar, which
-  // are already %-encoded. URLSearchParams would double-encode them (%E1 →
-  // %25E1) and break the redirect, so we decode first when possible.
-  let decoded = url
+  // Extract TLD from the clean product URL so the affiliate host matches the
+  // market (VN → s.shopee.vn, ID → s.shopee.co.id, etc.).
+  let tld = 'vn'
   try {
-    decoded = decodeURIComponent(url)
+    const host = new URL(url).hostname.toLowerCase()
+    const m = host.match(/^(?:www\.)?shopee\.(.+)$/)
+    if (m) tld = m[1]
   } catch {
-    // Malformed escapes — fall back to the raw input. Shopee will reject if
-    // it's truly invalid, but at least we won't drop a legitimate edge case.
+    // Unreachable if the URL came from sanitizeShopeeUrl, but be defensive.
   }
 
   const params = new URLSearchParams({
-    origin_link: decoded,
+    origin_link: url,
     affiliate_id: SHOPEE_AFFILIATE_ID,
   })
 
@@ -68,7 +56,7 @@ export function buildAffiliateLink(originalUrl: string, subIds: string[] = []): 
 
   return {
     ok: true,
-    affiliateLink: `https://s.shopee.vn/an_redir?${params.toString()}`,
+    affiliateLink: `https://s.shopee.${tld}/an_redir?${params.toString()}`,
     originalLink: url,
   }
 }

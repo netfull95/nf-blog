@@ -3,7 +3,12 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 
-type SuccessData = { shortLink: string; longLink: string; expandedFrom?: string }
+type SuccessData = {
+  shortLink: string
+  longLink: string
+  expandedFrom?: string
+  sanitizedTo?: string
+}
 
 type ApiError = {
   error: string
@@ -178,6 +183,11 @@ const ResultCard = ({
         ↪ {t('expandedFromLabel')}: <code className="break-all">{data.expandedFrom}</code>
       </p>
     ) : null}
+    {data.sanitizedTo ? (
+      <p className="text-xs text-gray-600 dark:text-gray-400">
+        ✨ {t('sanitizedToLabel')}: <code className="break-all">{data.sanitizedTo}</code>
+      </p>
+    ) : null}
     {data.longLink ? (
       <div>
         <div className="mb-1 text-xs font-medium tracking-wide text-gray-600 uppercase dark:text-gray-300">
@@ -219,8 +229,12 @@ function errorSummary(
   switch (err.error) {
     case 'EMPTY':
       return t('errorEmpty')
+    case 'INVALID_URL':
+      return t('errorInvalidUrl')
     case 'NOT_SHOPEE':
       return t('errorNotShopee')
+    case 'NOT_PRODUCT_URL':
+      return t('errorNotProductUrl')
     case 'EXPAND_FAILED':
       return t('errorExpandFailed')
     case 'NOT_CONFIGURED':
