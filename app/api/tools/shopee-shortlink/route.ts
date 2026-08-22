@@ -86,12 +86,9 @@ export async function POST(request: NextRequest) {
     {
       shortLink: result.affiliateLink,
       longLink: result.originalLink,
-      // Surface the expansion + sanitization steps so users can see what we
-      // resolved their input to (helpful when debugging "wrong product" issues).
-      ...(expandedFrom ? { expandedFrom } : {}),
-      ...(expandedFrom || sanitized.cleanUrl !== originUrl
-        ? { sanitizedTo: sanitized.cleanUrl }
-        : {}),
+      shopId: sanitized.shopId,
+      itemId: sanitized.itemId,
+      ...(sanitized.productName ? { productName: sanitized.productName } : {}),
     },
     {
       headers: {
