@@ -1,8 +1,8 @@
 {
   "byKey": {
     "pancake-api-mcp-guide": {
-      "vi": "pancake-api-mcp-cai-dat-su-dung-claude-cursor",
-      "en": "pancake-api-mcp-install-guide-claude-cursor"
+      "en": "pancake-api-mcp-install-guide-claude-cursor",
+      "vi": "pancake-api-mcp-cai-dat-su-dung-claude-cursor"
     },
     "pancake-webhook-idempotency": {
       "vi": "pancake-webhook-idempotency-chong-trung-su-kien"
@@ -48,8 +48,8 @@
     }
   },
   "bySlug": {
-    "pancake-api-mcp-cai-dat-su-dung-claude-cursor": "pancake-api-mcp-guide",
     "pancake-api-mcp-install-guide-claude-cursor": "pancake-api-mcp-guide",
+    "pancake-api-mcp-cai-dat-su-dung-claude-cursor": "pancake-api-mcp-guide",
     "pancake-webhook-idempotency-chong-trung-su-kien": "pancake-webhook-idempotency",
     "pancake-webhook-track-nguon-khach-referral-post-ad": "pancake-conversation-source-tracking",
     "pancake-crm-records-crud-api-lead-account-contact": "pancake-crm-records",

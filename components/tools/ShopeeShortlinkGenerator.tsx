@@ -31,11 +31,23 @@ type SavedLink = {
   shopId?: string
   itemId?: string
   productName?: string
+  imageUrl?: string
   createdAt: number
+  // 'pending' when a preview fetch hasn't been attempted yet, 'failed' when
+  // addlivetag returned no data (product delisted / not in their DB) so we
+  // don't re-fetch on every mount. Omitted once we successfully have data.
+  previewStatus?: 'pending' | 'failed'
 }
 
 const HISTORY_KEY = 'nf-shopee-history'
 const HISTORY_MAX = 50
+
+// Public product-data API from addlivetag.com — returns productName + imageUrl
+// for a Shopee item_id. CORS-enabled (`Access-Control-Allow-Origin: *`), so
+// we call it directly from the browser without a proxy. Rate limit is
+// generous (2000/min from their DB cache) and enforced per client IP.
+// Docs: https://github.com/bcat95/shopee-aff/blob/main/product-data-api.md
+const PREVIEW_API = 'https://data.addlivetag.com/product-data/product-data.php'
 
 const ShopeeShortlinkGenerator = () => {
   const t = useTranslations('Tools.shopee')
@@ -66,6 +78,76 @@ const ShopeeShortlinkGenerator = () => {
       /* quota exceeded or blocked — nothing we can do */
     }
   }, [])
+
+  // Lazy-fetch productName + imageUrl for history items that don't have one
+  // yet (either newly added or from the pre-preview version of this tool).
+  // Runs once per mount; failed items are marked so we don't retry every
+  // render. Uses the public addlivetag CORS-enabled API — no proxy needed.
+  useEffect(() => {
+    const pending = history.filter(
+      (h) => h.itemId && !h.imageUrl && h.previewStatus !== 'failed'
+    )
+    if (!pending.length) return
+
+    let cancelled = false
+    ;(async () => {
+      for (const item of pending) {
+        try {
+          const res = await fetch(
+            `${PREVIEW_API}?item_id=${encodeURIComponent(item.itemId!)}`
+          )
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const json = (await res.json()) as {
+            productInfo?: { productName?: string | null; imageUrl?: string | null }
+          }
+          const productName = json.productInfo?.productName || undefined
+          const imageUrl = json.productInfo?.imageUrl || undefined
+          if (cancelled) return
+          setHistory((prev) => {
+            const next = prev.map((h) =>
+              h.id === item.id
+                ? productName || imageUrl
+                  ? {
+                      ...h,
+                      productName: h.productName || productName,
+                      imageUrl: h.imageUrl || imageUrl,
+                      previewStatus: undefined,
+                    }
+                  : { ...h, previewStatus: 'failed' as const }
+                : h
+            )
+            try {
+              localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+            } catch {
+              /* ignore */
+            }
+            return next
+          })
+        } catch {
+          if (cancelled) return
+          // Network / API error — mark failed to avoid a retry storm, but
+          // don't nuke the item. User can still click through to the link.
+          setHistory((prev) => {
+            const next = prev.map((h) =>
+              h.id === item.id ? { ...h, previewStatus: 'failed' as const } : h
+            )
+            try {
+              localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+            } catch {
+              /* ignore */
+            }
+            return next
+          })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Intentionally re-run when history length changes (new items added) —
+    // not on every field mutation, or we'd loop forever after our own writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.length])
 
   const addToHistory = useCallback((data: SuccessData) => {
     const entry: SavedLink = {
@@ -319,9 +401,24 @@ const HistoryList = ({
             key={item.id}
             className="flex gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/40"
           >
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-orange-100 to-red-100 text-2xl text-orange-500 dark:from-orange-900/40 dark:to-red-900/40">
-              🛒
-            </div>
+            {item.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.imageUrl}
+                alt={item.productName || 'product'}
+                className="h-16 w-16 shrink-0 rounded-md object-cover"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  // Broken image URL — fall back to placeholder icon
+                  ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                }}
+              />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-orange-100 to-red-100 text-2xl text-orange-500 dark:from-orange-900/40 dark:to-red-900/40">
+                🛒
+              </div>
+            )}
             <div className="min-w-0 flex-1 space-y-1">
               <p
                 className="line-clamp-2 text-sm font-medium text-gray-900 dark:text-gray-100"
