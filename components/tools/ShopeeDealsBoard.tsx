@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
+import { buildAffiliateLinkFromIds } from '@/lib/shopee/buildAffiliateLink'
 
 type Deal = {
   id: number
@@ -43,20 +44,13 @@ const PRICE_TIER_META: { key: PriceTier; label: string; test: (p: number) => boo
 
 const REFRESH_INTERVAL_MS = 60_000
 const PAGE_SIZE = 60
-const AFFILIATE_ID = '17323120332'
 
-// Deterministic affiliate URL builder — same shape as buildAffiliateLink.ts
-// on the server side, but runs in the browser so we don't round-trip for
-// each copy button click. Deals already carry shopId+itemId so we can go
-// straight to the canonical /product/{shop}/{item} form.
-function toAffiliateUrl(shopId: number, itemId: number, subId = 'deals'): string {
-  const origin = `https://shopee.vn/product/${shopId}/${itemId}`
-  const params = new URLSearchParams({
-    origin_link: origin,
-    affiliate_id: AFFILIATE_ID,
-    sub_id: subId,
-  })
-  return `https://s.shopee.vn/an_redir?${params.toString()}`
+// Tag every deals-board click with sub_id="deals" so we can distinguish this
+// traffic from the shopee-shortlink tool (no sub_id) in the affiliate
+// dashboard. Actual an_redir assembly lives in `buildAffiliateLinkFromIds`
+// so the affiliate ID stays in one place.
+function toAffiliateUrl(shopId: number, itemId: number): string {
+  return buildAffiliateLinkFromIds(shopId, itemId, ['deals'])
 }
 
 const VND = new Intl.NumberFormat('vi-VN', {
