@@ -162,6 +162,7 @@
       "loading": "Đang tải deals...",
       "errorLoading": "Không tải được deals",
       "empty": "Không có deal nào khớp filter. Thử bỏ bớt điều kiện.",
+      "emptyUpstreamStale": "Chưa có deal đang/sắp diễn ra. Nguồn upstream có {totalRaw} deals cũ đã hết hạn — chờ nguồn cập nhật flash sale mới.",
       "loadMore": "Xem thêm {n} deals",
       "soldSuffix": "đã bán",
       "copyLink": "Copy link",

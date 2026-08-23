@@ -162,6 +162,7 @@
       "loading": "Loading deals...",
       "errorLoading": "Failed to load deals",
       "empty": "No deals match. Try removing some filters.",
+      "emptyUpstreamStale": "No live/upcoming deals yet. Upstream has {totalRaw} deals but they've all expired — waiting for the source to refresh with new flash sales.",
       "loadMore": "Load {n} more",
       "soldSuffix": "sold",
       "copyLink": "Copy link",

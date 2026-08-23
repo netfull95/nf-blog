@@ -87,10 +87,25 @@ export async function GET() {
     if (!Array.isArray(raw)) {
       return NextResponse.json({ error: 'BAD_UPSTREAM_SHAPE' }, { status: 502 })
     }
-    const items = raw.map(trim)
+
+    // Drop expired deals (sale_time in the past). Addlivetag returns 6000
+    // items regardless of expiry — including flash sales that ran days ago —
+    // so we filter here so users only see genuinely upcoming/live deals.
+    // Small grace window (10 minutes past sale_time) covers the case where
+    // the sale is currently happening in its slot.
+    const nowSec = Math.floor(Date.now() / 1000)
+    const graceSec = 10 * 60
+    const items = raw
+      .filter((d) => typeof d.sale_time === 'number' && d.sale_time + graceSec > nowSec)
+      .map(trim)
 
     return NextResponse.json(
-      { items, count: items.length, fetchedAt: Math.floor(Date.now() / 1000) },
+      {
+        items,
+        count: items.length,
+        totalRaw: raw.length,
+        fetchedAt: nowSec,
+      },
       {
         headers: {
           // 60s edge cache; SWR another 60s so a slow upstream doesn't stall

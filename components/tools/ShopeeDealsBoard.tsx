@@ -20,7 +20,12 @@ type Deal = {
   saleSlot: string
 }
 
-type ApiResp = { items: Deal[]; count: number; fetchedAt: number }
+type ApiResp = {
+  items: Deal[]
+  count: number
+  fetchedAt: number
+  totalRaw?: number
+}
 
 type PriceTier = 'lt1k' | '1kto9k' | '9kto29k' | 'gte29k'
 type Sort = 'random' | 'discount' | 'priceAsc' | 'priceDesc' | 'sold' | 'saleTime'
@@ -576,7 +581,9 @@ const ShopeeDealsBoard = () => {
             <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/40">
               {activeTab === 'favorites' && favorites.length === 0
                 ? t('favoritesEmpty')
-                : t('empty')}
+                : state.data.count === 0 && state.data.totalRaw && state.data.totalRaw > 0
+                  ? t('emptyUpstreamStale', { totalRaw: state.data.totalRaw })
+                  : t('empty')}
             </div>
           )}
           {totalMatching > visibleCount && (
