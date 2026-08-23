@@ -59,6 +59,33 @@ const REFRESH_INTERVAL_MS = 60_000
 const PAGE_SIZE = 60
 const FAVORITES_KEY = 'nf-shopee-deals-favorites'
 const FAVORITES_MAX = 200
+const FILTERS_KEY = 'nf-shopee-deals-filters'
+
+const DEFAULT_FILTERS: Filters = {
+  q: '',
+  priceTiers: new Set(),
+  discountMin: 0,
+  stockMin: 0,
+  saleSlots: new Set(),
+  soldRatioMin: 0,
+  sort: 'sold',
+}
+
+// JSON can't round-trip Set — convert to/from arrays for localStorage.
+type FiltersWire = Omit<Filters, 'priceTiers' | 'saleSlots'> & {
+  priceTiers: PriceTier[]
+  saleSlots: string[]
+}
+function filtersToWire(f: Filters): FiltersWire {
+  return { ...f, priceTiers: Array.from(f.priceTiers), saleSlots: Array.from(f.saleSlots) }
+}
+function filtersFromWire(w: FiltersWire): Filters {
+  return {
+    ...w,
+    priceTiers: new Set(w.priceTiers),
+    saleSlots: new Set(w.saleSlots),
+  }
+}
 
 // Tag every deals-board click with sub_id="deals" so we can distinguish this
 // traffic from the shopee-shortlink tool (no sub_id) in the affiliate
@@ -94,18 +121,38 @@ const ShopeeDealsBoard = () => {
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [randomSeed, setRandomSeed] = useState(1)
 
-  const [filters, setFilters] = useState<Filters>({
-    q: '',
-    priceTiers: new Set(),
-    discountMin: 0,
-    stockMin: 0,
-    saleSlots: new Set(),
-    soldRatioMin: 0,
-    sort: 'discount',
-  })
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  // Track whether we've loaded persisted filters — until then, skip writing
+  // to localStorage so we don't clobber saved state with the default before
+  // hydration completes.
+  const filtersLoadedRef = useRef(false)
 
   const [activeTab, setActiveTab] = useState<Tab>('all')
   const [favorites, setFavorites] = useState<FavoriteEntry[]>([])
+
+  // Load persisted filters once on mount (client-only)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTERS_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as FiltersWire
+        setFilters(filtersFromWire(parsed))
+      }
+    } catch {
+      /* ignore malformed */
+    }
+    filtersLoadedRef.current = true
+  }, [])
+
+  // Persist filters on any change (after initial hydration only)
+  useEffect(() => {
+    if (!filtersLoadedRef.current) return
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify(filtersToWire(filters)))
+    } catch {
+      /* quota exceeded / blocked */
+    }
+  }, [filters])
 
   // Load favorites once on mount (client-only)
   useEffect(() => {
@@ -282,15 +329,12 @@ const ShopeeDealsBoard = () => {
     })
   }
   const resetFilters = () => {
-    setFilters({
-      q: '',
-      priceTiers: new Set(),
-      discountMin: 0,
-      stockMin: 0,
-      saleSlots: new Set(),
-      soldRatioMin: 0,
-      sort: 'discount',
-    })
+    setFilters(DEFAULT_FILTERS)
+    try {
+      localStorage.removeItem(FILTERS_KEY)
+    } catch {
+      /* ignore */
+    }
   }
 
   const copyDealLink = async (deal: Deal) => {
@@ -648,7 +692,7 @@ const DealCard = ({
           onClick={onToggleFavorite}
           aria-label={isFavorite ? t('unfavorite') : t('favorite')}
           title={isFavorite ? t('unfavorite') : t('favorite')}
-          className="absolute top-1 left-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-base backdrop-blur transition-colors hover:bg-white dark:bg-black/60 dark:hover:bg-black/80"
+          className="absolute top-1.5 left-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-white text-base shadow-md ring-1 ring-black/5 transition-transform hover:scale-110 active:scale-95 dark:bg-gray-800 dark:ring-white/10"
         >
           {isFavorite ? '❤️' : '🤍'}
         </button>
