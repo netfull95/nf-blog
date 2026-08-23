@@ -98,16 +98,26 @@ module.exports = () => {
     },
     async redirects() {
       return [
-        // Short aliases for tools.
+        // Short aliases for tools (address bar changes to the canonical /tools/... path).
         { source: '/genqr', destination: '/tools/qr-generator', permanent: false },
         { source: '/en/genqr', destination: '/en/tools/qr-generator', permanent: false },
         { source: '/fbinfo', destination: '/tools/fb-info', permanent: false },
         { source: '/en/fbinfo', destination: '/en/tools/fb-info', permanent: false },
         { source: '/splink', destination: '/tools/shopee-shortlink', permanent: false },
         { source: '/en/splink', destination: '/en/tools/shopee-shortlink', permanent: false },
-        { source: '/sale', destination: '/tools/shopee-deals', permanent: false },
-        { source: '/en/sale', destination: '/en/tools/shopee-deals', permanent: false },
       ]
+    },
+    async rewrites() {
+      return {
+        // Serve the deals board at /sale WITHOUT changing the URL in the
+        // address bar. Rewrite in `beforeFiles` so it runs before Next's
+        // file-system routing and lets the next-intl middleware still
+        // treat the rewritten path as the default (vi) locale page.
+        beforeFiles: [
+          { source: '/sale', destination: '/tools/shopee-deals' },
+          { source: '/en/sale', destination: '/en/tools/shopee-deals' },
+        ],
+      }
     },
     webpack: (config, options) => {
       config.module.rules.push({
