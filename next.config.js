@@ -107,18 +107,9 @@ module.exports = () => {
         { source: '/en/splink', destination: '/en/tools/shopee-shortlink', permanent: false },
       ]
     },
-    async rewrites() {
-      return {
-        // Serve the deals board at /sale WITHOUT changing the URL in the
-        // address bar. Rewrite in `beforeFiles` so it runs before Next's
-        // file-system routing and lets the next-intl middleware still
-        // treat the rewritten path as the default (vi) locale page.
-        beforeFiles: [
-          { source: '/sale', destination: '/tools/shopee-deals' },
-          { source: '/en/sale', destination: '/en/tools/shopee-deals' },
-        ],
-      }
-    },
+    // /sale short alias is handled in middleware.ts (next-intl runs before
+    // config-level rewrites, so a rewrite here on /sale wouldn't fire before
+    // intl tries to relocale it into a nonexistent /vi/sale route).
     webpack: (config, options) => {
       config.module.rules.push({
         test: /\.svg$/,

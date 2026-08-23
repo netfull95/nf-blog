@@ -28,6 +28,25 @@ function maybeRewriteToMarkdown(req: NextRequest): NextResponse | null {
   return NextResponse.rewrite(url)
 }
 
+// Short aliases whose visible URL must stay unchanged (rewrite, not redirect).
+// The next.config `rewrites()` runs AFTER this middleware, and next-intl
+// internally maps `/sale` → `/vi/sale` (which doesn't exist), so a
+// config-level rewrite doesn't match. Handle it here instead — rewrite to
+// the explicit-locale path so file-system routing lands on the real page.
+const ALIAS_REWRITES: Record<string, string> = {
+  '/sale': '/vi/tools/shopee-deals',
+  '/en/sale': '/en/tools/shopee-deals',
+}
+
+function maybeRewriteAlias(req: NextRequest): NextResponse | null {
+  const pathname = req.nextUrl.pathname
+  const target = ALIAS_REWRITES[pathname]
+  if (!target) return null
+  const url = req.nextUrl.clone()
+  url.pathname = target
+  return NextResponse.rewrite(url)
+}
+
 export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
@@ -35,6 +54,11 @@ export default function middleware(req: NextRequest) {
   // bypasses locale routing entirely.
   const markdownResponse = maybeRewriteToMarkdown(req)
   if (markdownResponse) return markdownResponse
+
+  // Short-alias rewrites (e.g. /sale → deals board) — also bypass intl so
+  // next-intl doesn't try to re-locale a path that has no matching page.
+  const aliasResponse = maybeRewriteAlias(req)
+  if (aliasResponse) return aliasResponse
 
   // Only consider redirecting on the default-locale homepage. We don't touch
   // paths already under /en, or any blog/slug path that may not have an EN
