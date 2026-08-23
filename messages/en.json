@@ -166,7 +166,14 @@
       "soldSuffix": "sold",
       "copyLink": "Copy link",
       "copied": "Copied",
-      "buyNow": "Buy now"
+      "buyNow": "Buy now",
+      "tabAll": "All",
+      "tabFavorites": "Favorites",
+      "favorite": "Add to favorites",
+      "unfavorite": "Remove from favorites",
+      "favoritesEmpty": "No favorite deals yet. Click ❤️ on any card to save it.",
+      "favoritesClearBtn": "Clear all favorites",
+      "favoritesClearConfirm": "Delete all favorite deals?"
     },
     "qr": {
       "title": "QR Generator",

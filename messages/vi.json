@@ -166,7 +166,14 @@
       "soldSuffix": "đã bán",
       "copyLink": "Copy link",
       "copied": "Đã copy",
-      "buyNow": "Mua ngay"
+      "buyNow": "Mua ngay",
+      "tabAll": "Tất cả",
+      "tabFavorites": "Yêu thích",
+      "favorite": "Thêm vào yêu thích",
+      "unfavorite": "Bỏ khỏi yêu thích",
+      "favoritesEmpty": "Chưa có deal yêu thích. Bấm ❤️ trên card bất kỳ để lưu.",
+      "favoritesClearBtn": "Xoá tất cả yêu thích",
+      "favoritesClearConfirm": "Xoá toàn bộ deal đã yêu thích?"
     },
     "qr": {
       "title": "QR Generator",

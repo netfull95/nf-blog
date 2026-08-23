@@ -25,15 +25,28 @@ type ApiResp = { items: Deal[]; count: number; fetchedAt: number }
 type PriceTier = 'lt1k' | '1kto9k' | '9kto29k' | 'gte29k'
 type Sort = 'random' | 'discount' | 'priceAsc' | 'priceDesc' | 'sold' | 'saleTime'
 
+type SoldRatio = 0 | 20 | 50
+
 type Filters = {
   q: string
   priceTiers: Set<PriceTier>
   discountMin: 0 | 50 | 70 | 90
   stockMin: 0 | 50 | 100
   saleSlots: Set<string>
-  soldRatioMin: 0 | 50
+  soldRatioMin: SoldRatio
   sort: Sort
 }
+
+type FavoriteEntry = {
+  id: number
+  savedAt: number
+  // Snapshot of the deal at favorite time so the card still renders when
+  // the deal cycles out of the upstream API. When the deal IS in the
+  // current fetch, we prefer that (fresher price / sold count).
+  snapshot: Deal
+}
+
+type Tab = 'all' | 'favorites'
 
 const PRICE_TIER_META: { key: PriceTier; label: string; test: (p: number) => boolean }[] = [
   { key: 'lt1k', label: '≤ 1K', test: (p) => p <= 1_000 },
@@ -44,6 +57,8 @@ const PRICE_TIER_META: { key: PriceTier; label: string; test: (p: number) => boo
 
 const REFRESH_INTERVAL_MS = 60_000
 const PAGE_SIZE = 60
+const FAVORITES_KEY = 'nf-shopee-deals-favorites'
+const FAVORITES_MAX = 200
 
 // Tag every deals-board click with sub_id="deals" so we can distinguish this
 // traffic from the shopee-shortlink tool (no sub_id) in the affiliate
@@ -89,6 +104,57 @@ const ShopeeDealsBoard = () => {
     sort: 'discount',
   })
 
+  const [activeTab, setActiveTab] = useState<Tab>('all')
+  const [favorites, setFavorites] = useState<FavoriteEntry[]>([])
+
+  // Load favorites once on mount (client-only)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITES_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as FavoriteEntry[]
+      if (Array.isArray(parsed)) setFavorites(parsed.slice(0, FAVORITES_MAX))
+    } catch {
+      /* ignore malformed */
+    }
+  }, [])
+
+  const persistFavorites = useCallback((next: FavoriteEntry[]) => {
+    setFavorites(next)
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(next))
+    } catch {
+      /* quota exceeded or blocked */
+    }
+  }, [])
+
+  const favoriteIds = useMemo(() => new Set(favorites.map((f) => f.id)), [favorites])
+
+  const toggleFavorite = useCallback(
+    (deal: Deal) => {
+      setFavorites((prev) => {
+        const isFav = prev.some((f) => f.id === deal.id)
+        const next = isFav
+          ? prev.filter((f) => f.id !== deal.id)
+          : [
+              { id: deal.id, savedAt: Date.now(), snapshot: deal },
+              ...prev,
+            ].slice(0, FAVORITES_MAX)
+        try {
+          localStorage.setItem(FAVORITES_KEY, JSON.stringify(next))
+        } catch {
+          /* ignore */
+        }
+        return next
+      })
+    },
+    []
+  )
+
+  const clearFavorites = useCallback(() => {
+    if (window.confirm(t('favoritesClearConfirm'))) persistFavorites([])
+  }, [persistFavorites, t])
+
   // ---- Fetch + auto-refresh ----------------------------------------------
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -132,7 +198,17 @@ const ShopeeDealsBoard = () => {
 
   const filtered = useMemo(() => {
     if (state.kind !== 'ok') return []
-    let arr = state.data.items
+
+    // Data source depends on active tab. On Favorites tab, prefer the current
+    // fresh version of each favorite when it's still in the upstream data
+    // (fresher price/sold) and fall back to the snapshot when it's not.
+    let arr: Deal[]
+    if (activeTab === 'favorites') {
+      const byId = new Map(state.data.items.map((d) => [d.id, d]))
+      arr = favorites.map((f) => byId.get(f.id) || f.snapshot)
+    } else {
+      arr = state.data.items
+    }
 
     if (filters.q.trim()) {
       const q = filters.q.trim().toLowerCase()
@@ -180,12 +256,12 @@ const ShopeeDealsBoard = () => {
         break
     }
     return arr
-  }, [state, filters, randomSeed])
+  }, [state, filters, randomSeed, activeTab, favorites])
 
-  // Reset visible count when filter results shrink below current visible
+  // Reset visible count when filters or active tab change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE)
-  }, [filters])
+  }, [filters, activeTab])
 
   // ---- Filter mutators ----------------------------------------------------
 
@@ -243,6 +319,37 @@ const ShopeeDealsBoard = () => {
 
   return (
     <div className="space-y-4">
+      {/* Tab bar: All vs Favorites */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-gray-700">
+        <TabButton
+          active={activeTab === 'all'}
+          onClick={() => setActiveTab('all')}
+        >
+          {t('tabAll')}
+          {state.kind === 'ok' ? (
+            <span className="ml-1.5 text-xs opacity-70">
+              ({state.data.count.toLocaleString()})
+            </span>
+          ) : null}
+        </TabButton>
+        <TabButton
+          active={activeTab === 'favorites'}
+          onClick={() => setActiveTab('favorites')}
+        >
+          ❤️ {t('tabFavorites')}
+          <span className="ml-1.5 text-xs opacity-70">({favorites.length})</span>
+        </TabButton>
+        {activeTab === 'favorites' && favorites.length > 0 && (
+          <button
+            type="button"
+            onClick={clearFavorites}
+            className="ml-auto text-xs text-gray-500 underline hover:text-red-500 dark:text-gray-400"
+          >
+            {t('favoritesClearBtn')}
+          </button>
+        )}
+      </div>
+
       {/* Top bar: search + refresh countdown */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <input
@@ -317,16 +424,11 @@ const ShopeeDealsBoard = () => {
 
         {/* Sold ratio */}
         <FilterRow label={t('filterSold')}>
-          {[0, 50].map((v) => (
+          {([0, 20, 50] as const).map((v) => (
             <Chip
               key={v}
               active={filters.soldRatioMin === v}
-              onClick={() =>
-                setFilters((f) => ({
-                  ...f,
-                  soldRatioMin: v as Filters['soldRatioMin'],
-                }))
-              }
+              onClick={() => setFilters((f) => ({ ...f, soldRatioMin: v }))}
             >
               {v === 0 ? t('any') : `≥ ${v}%`}
             </Chip>
@@ -420,13 +522,17 @@ const ShopeeDealsBoard = () => {
                 deal={d}
                 copied={copiedId === d.id}
                 onCopy={() => void copyDealLink(d)}
+                isFavorite={favoriteIds.has(d.id)}
+                onToggleFavorite={() => toggleFavorite(d)}
                 t={t}
               />
             ))}
           </div>
           {totalMatching === 0 && (
             <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/40">
-              {t('empty')}
+              {activeTab === 'favorites' && favorites.length === 0
+                ? t('favoritesEmpty')
+                : t('empty')}
             </div>
           )}
           {totalMatching > visibleCount && (
@@ -447,6 +553,29 @@ const ShopeeDealsBoard = () => {
 }
 
 // ---- Sub-components ------------------------------------------------------
+
+const TabButton = ({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={
+      'border-b-2 px-3 py-2 text-sm font-medium transition-colors ' +
+      (active
+        ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+        : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200')
+    }
+  >
+    {children}
+  </button>
+)
 
 const FilterRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="flex flex-wrap items-center gap-2">
@@ -484,11 +613,15 @@ const DealCard = ({
   deal,
   copied,
   onCopy,
+  isFavorite,
+  onToggleFavorite,
   t,
 }: {
   deal: Deal
   copied: boolean
   onCopy: () => void
+  isFavorite: boolean
+  onToggleFavorite: () => void
   t: ReturnType<typeof useTranslations<'Tools.deals'>>
 }) => {
   const affiliateUrl = toAffiliateUrl(deal.shopId, deal.itemId)
@@ -509,6 +642,16 @@ const DealCard = ({
             ;(e.currentTarget as HTMLImageElement).style.display = 'none'
           }}
         />
+        {/* Favorite toggle — top-left, opposite the discount badge */}
+        <button
+          type="button"
+          onClick={onToggleFavorite}
+          aria-label={isFavorite ? t('unfavorite') : t('favorite')}
+          title={isFavorite ? t('unfavorite') : t('favorite')}
+          className="absolute top-1 left-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-base backdrop-blur transition-colors hover:bg-white dark:bg-black/60 dark:hover:bg-black/80"
+        >
+          {isFavorite ? '❤️' : '🤍'}
+        </button>
         {deal.discountPct > 0 && (
           <span className="absolute top-1 right-1 rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
             -{deal.discountPct}%
