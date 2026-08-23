@@ -11,11 +11,12 @@ export const revalidate = 60
 // - Docs: https://data.addlivetag.com/shopee/#product-offer
 const UPSTREAM_BASE = 'https://data.addlivetag.com/offers/product-offer.php'
 
-// Fetch top pages sorted by sales, merge into a single list. 4×50 = 200
-// items is enough breadth for a trending board and fits inside the live
-// rate-limit budget with room to spare.
-const PAGES = 4
+// Fetch top pages sorted by sales, merge into a single list. Upstream
+// duplicates ~35% of items across sortType=2 pages, so 8×50 = 400 raw
+// yields ~230 unique before we cap at TARGET_UNIQUE.
+const PAGES = 8
 const LIMIT_PER_PAGE = 50
+const TARGET_UNIQUE = 200
 const SORT_TYPE_SALES = 2
 
 type UpstreamProduct = {
@@ -116,16 +117,19 @@ export async function GET() {
       return NextResponse.json({ error: 'UPSTREAM_ERROR' }, { status: 502 })
     }
 
-    // Merge + dedupe by itemId (in case pages overlap under concurrent
-    // upstream cache writes).
+    // Merge + dedupe by itemId. Upstream returns overlapping items across
+    // pages (same top products by sales), so raw count >> unique count.
+    // Cap at TARGET_UNIQUE for a bounded response size (client paginates).
     const seen = new Set<number>()
     const items: TrimmedItem[] = []
     for (const page of okPages) {
       for (const p of page.products || []) {
+        if (items.length >= TARGET_UNIQUE) break
         if (seen.has(p.itemId)) continue
         seen.add(p.itemId)
         items.push(trim(p))
       }
+      if (items.length >= TARGET_UNIQUE) break
     }
 
     return NextResponse.json(
