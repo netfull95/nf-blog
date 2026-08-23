@@ -11,34 +11,34 @@ type Deal = {
   img: string
   title: string
   price: number
-  originalPrice: number
-  discountPct: number
-  amount: number
   sold: number
   saleTime: number
-  saleDate: string
-  saleSlot: string
+  // Optional — only present when upstream provides them. Product-offer
+  // source (current) omits discount/stock/slot fields.
+  originalPrice?: number
+  discountPct?: number
+  amount?: number
+  saleDate?: string
+  saleSlot?: string
+  rating?: number
+  shopName?: string
 }
 
 type ApiResp = {
   items: Deal[]
   count: number
   fetchedAt: number
-  totalRaw?: number
 }
 
 type PriceTier = 'lt1k' | '1kto9k' | '9kto29k' | 'gte29k'
-type Sort = 'random' | 'discount' | 'priceAsc' | 'priceDesc' | 'sold' | 'saleTime'
+type Sort = 'random' | 'priceAsc' | 'priceDesc' | 'sold'
 
-type SoldRatio = 0 | 20 | 50
+type RatingMin = 0 | 4 | 4.5 | 4.8
 
 type Filters = {
   q: string
   priceTiers: Set<PriceTier>
-  discountMin: 0 | 50 | 70 | 90
-  stockMin: 0 | 50 | 100
-  saleSlots: Set<string>
-  soldRatioMin: SoldRatio
+  ratingMin: RatingMin
   sort: Sort
 }
 
@@ -69,27 +69,19 @@ const FILTERS_KEY = 'nf-shopee-deals-filters'
 const DEFAULT_FILTERS: Filters = {
   q: '',
   priceTiers: new Set(),
-  discountMin: 0,
-  stockMin: 0,
-  saleSlots: new Set(),
-  soldRatioMin: 0,
+  ratingMin: 0,
   sort: 'sold',
 }
 
 // JSON can't round-trip Set — convert to/from arrays for localStorage.
-type FiltersWire = Omit<Filters, 'priceTiers' | 'saleSlots'> & {
+type FiltersWire = Omit<Filters, 'priceTiers'> & {
   priceTiers: PriceTier[]
-  saleSlots: string[]
 }
 function filtersToWire(f: Filters): FiltersWire {
-  return { ...f, priceTiers: Array.from(f.priceTiers), saleSlots: Array.from(f.saleSlots) }
+  return { ...f, priceTiers: Array.from(f.priceTiers) }
 }
 function filtersFromWire(w: FiltersWire): Filters {
-  return {
-    ...w,
-    priceTiers: new Set(w.priceTiers),
-    saleSlots: new Set(w.saleSlots),
-  }
+  return { ...w, priceTiers: new Set(w.priceTiers) }
 }
 
 // Tag every deals-board click with sub_id="deals" so we can distinguish this
@@ -270,25 +262,11 @@ const ShopeeDealsBoard = () => {
       const tiers = PRICE_TIER_META.filter((m) => filters.priceTiers.has(m.key))
       arr = arr.filter((d) => tiers.some((m) => m.test(d.price)))
     }
-    if (filters.discountMin > 0) {
-      arr = arr.filter((d) => d.discountPct >= filters.discountMin)
-    }
-    if (filters.stockMin > 0) {
-      arr = arr.filter((d) => d.amount >= filters.stockMin)
-    }
-    if (filters.saleSlots.size > 0) {
-      arr = arr.filter((d) => filters.saleSlots.has(d.saleSlot))
-    }
-    if (filters.soldRatioMin > 0) {
-      arr = arr.filter(
-        (d) => d.amount > 0 && (d.sold / d.amount) * 100 >= filters.soldRatioMin
-      )
+    if (filters.ratingMin > 0) {
+      arr = arr.filter((d) => (d.rating ?? 0) >= filters.ratingMin)
     }
 
     switch (filters.sort) {
-      case 'discount':
-        arr = [...arr].sort((a, b) => b.discountPct - a.discountPct)
-        break
       case 'priceAsc':
         arr = [...arr].sort((a, b) => a.price - b.price)
         break
@@ -297,9 +275,6 @@ const ShopeeDealsBoard = () => {
         break
       case 'sold':
         arr = [...arr].sort((a, b) => b.sold - a.sold)
-        break
-      case 'saleTime':
-        arr = [...arr].sort((a, b) => a.saleTime - b.saleTime)
         break
       case 'random':
         arr = [...arr].sort(
@@ -325,14 +300,6 @@ const ShopeeDealsBoard = () => {
       return { ...f, priceTiers: next }
     })
   }
-  const toggleSaleSlot = (s: string) => {
-    setFilters((f) => {
-      const next = new Set(f.saleSlots)
-      if (next.has(s)) next.delete(s)
-      else next.add(s)
-      return { ...f, saleSlots: next }
-    })
-  }
   const resetFilters = () => {
     setFilters(DEFAULT_FILTERS)
     try {
@@ -352,14 +319,6 @@ const ShopeeDealsBoard = () => {
       /* ignore */
     }
   }
-
-  // Unique slots present in current data — for the slot filter chip row
-  const availableSlots = useMemo(() => {
-    if (state.kind !== 'ok') return [] as string[]
-    const set = new Set<string>()
-    state.data.items.forEach((d) => d.saleSlot && set.add(d.saleSlot))
-    return Array.from(set).sort()
-  }, [state])
 
   // ---- Render -------------------------------------------------------------
 
@@ -441,73 +400,26 @@ const ShopeeDealsBoard = () => {
           ))}
         </FilterRow>
 
-        {/* Discount */}
-        <FilterRow label={t('filterDiscount')}>
-          {[0, 50, 70, 90].map((v) => (
+        {/* Rating */}
+        <FilterRow label={t('filterRating')}>
+          {([0, 4, 4.5, 4.8] as const).map((v) => (
             <Chip
               key={v}
-              active={filters.discountMin === v}
-              onClick={() =>
-                setFilters((f) => ({ ...f, discountMin: v as Filters['discountMin'] }))
-              }
+              active={filters.ratingMin === v}
+              onClick={() => setFilters((f) => ({ ...f, ratingMin: v }))}
             >
-              {v === 0 ? t('any') : `≥ ${v}%`}
+              {v === 0 ? t('any') : `⭐ ≥ ${v}`}
             </Chip>
           ))}
         </FilterRow>
-
-        {/* Stock */}
-        <FilterRow label={t('filterStock')}>
-          {[0, 50, 100].map((v) => (
-            <Chip
-              key={v}
-              active={filters.stockMin === v}
-              onClick={() =>
-                setFilters((f) => ({ ...f, stockMin: v as Filters['stockMin'] }))
-              }
-            >
-              {v === 0 ? t('any') : `≥ ${v}`}
-            </Chip>
-          ))}
-        </FilterRow>
-
-        {/* Sold ratio */}
-        <FilterRow label={t('filterSold')}>
-          {([0, 20, 50] as const).map((v) => (
-            <Chip
-              key={v}
-              active={filters.soldRatioMin === v}
-              onClick={() => setFilters((f) => ({ ...f, soldRatioMin: v }))}
-            >
-              {v === 0 ? t('any') : `≥ ${v}%`}
-            </Chip>
-          ))}
-        </FilterRow>
-
-        {/* Sale slots (multi) */}
-        {availableSlots.length > 0 && (
-          <FilterRow label={t('filterSlot')}>
-            {availableSlots.map((s) => (
-              <Chip
-                key={s}
-                active={filters.saleSlots.has(s)}
-                onClick={() => toggleSaleSlot(s)}
-              >
-                {s}
-              </Chip>
-            ))}
-          </FilterRow>
-        )}
 
         {/* Sort + reset */}
         <FilterRow label={t('sort')}>
           {(
             [
-              ['discount', t('sortDiscount')],
+              ['sold', t('sortSold')],
               ['priceAsc', t('sortPriceAsc')],
               ['priceDesc', t('sortPriceDesc')],
-              ['sold', t('sortSold')],
-              ['saleTime', t('sortSaleTime')],
               ['random', t('sortRandom')],
             ] as const
           ).map(([k, label]) => (
@@ -581,9 +493,7 @@ const ShopeeDealsBoard = () => {
             <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/40">
               {activeTab === 'favorites' && favorites.length === 0
                 ? t('favoritesEmpty')
-                : state.data.count === 0 && state.data.totalRaw && state.data.totalRaw > 0
-                  ? t('emptyUpstreamStale', { totalRaw: state.data.totalRaw })
-                  : t('empty')}
+                : t('empty')}
             </div>
           )}
           {totalMatching > visibleCount && (
@@ -676,11 +586,9 @@ const DealCard = ({
   t: ReturnType<typeof useTranslations<'Tools.deals'>>
 }) => {
   const affiliateUrl = toAffiliateUrl(deal.shopId, deal.itemId)
-  const soldPct =
-    deal.amount > 0 ? Math.min(100, Math.round((deal.sold / deal.amount) * 100)) : 0
+  const soldLabel = compactNumber(deal.sold)
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/40">
-      {/* Image with discount badge overlay */}
       <div className="relative aspect-square w-full bg-gray-100 dark:bg-gray-800">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -693,7 +601,7 @@ const DealCard = ({
             ;(e.currentTarget as HTMLImageElement).style.display = 'none'
           }}
         />
-        {/* Favorite toggle — top-left, opposite the discount badge */}
+        {/* Favorite toggle — top-left */}
         <button
           type="button"
           onClick={onToggleFavorite}
@@ -703,14 +611,12 @@ const DealCard = ({
         >
           {isFavorite ? '❤️' : '🤍'}
         </button>
-        {deal.discountPct > 0 && (
+        {/* Discount badge — only when upstream provides it */}
+        {deal.discountPct && deal.discountPct > 0 ? (
           <span className="absolute top-1 right-1 rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
             -{deal.discountPct}%
           </span>
-        )}
-        <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
-          🕐 {deal.saleSlot} · {deal.saleDate}
-        </span>
+        ) : null}
       </div>
 
       <div className="flex flex-1 flex-col p-2.5">
@@ -724,27 +630,26 @@ const DealCard = ({
           <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
             {VND.format(deal.price)}
           </span>
-          {deal.originalPrice > deal.price && (
+          {deal.originalPrice && deal.originalPrice > deal.price ? (
             <span className="text-[10px] text-gray-400 line-through">
               {VND.format(deal.originalPrice)}
             </span>
-          )}
+          ) : null}
         </div>
 
-        {/* Stock/sold bar */}
-        <div className="mt-1.5 space-y-0.5">
-          <div className="flex justify-between text-[10px] text-gray-500">
+        {/* Trust row: rating · sold · shop */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+          {deal.rating ? <span>⭐ {deal.rating.toFixed(1)}</span> : null}
+          {deal.sold > 0 ? (
             <span>
-              {deal.sold}/{deal.amount} {t('soldSuffix')}
+              {soldLabel} {t('soldSuffix')}
             </span>
-            <span>{soldPct}%</span>
-          </div>
-          <div className="h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-            <div
-              className="h-full bg-orange-500"
-              style={{ width: `${soldPct}%` }}
-            />
-          </div>
+          ) : null}
+          {deal.shopName ? (
+            <span className="max-w-[10ch] truncate" title={deal.shopName}>
+              · {deal.shopName}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-2 flex gap-1.5">
@@ -767,6 +672,13 @@ const DealCard = ({
       </div>
     </div>
   )
+}
+
+// Compact number: 12500 → "12,5k", 1_200_000 → "1,2tr"
+function compactNumber(n: number): string {
+  if (n < 1_000) return String(n)
+  if (n < 1_000_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}tr`
 }
 
 export default ShopeeDealsBoard

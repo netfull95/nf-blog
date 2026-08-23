@@ -1,115 +1,141 @@
 import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-// Cache the upstream response server-side for 60s so a page full of users
-// polling every minute doesn't fan out to addlivetag every minute times N.
-// Vercel's fetch-level cache honors `next.revalidate`; our own response is
-// cached at the Vercel edge via Cache-Control below.
 export const revalidate = 60
 
-const UPSTREAM = 'https://addlivetag.com/api/data_dealxk.php'
+// Addlivetag's product-offer.php proxies Shopee's affiliate Open API
+// `productOfferV2` — a paginated list of products enrolled in the affiliate
+// program, sorted by whatever we ask (sortType=2 = highest sales).
+// - CORS-enabled but we proxy anyway to trim + cap fan-out
+// - Rate limit ~1000/min from their DB cache, ~100/min live
+// - Docs: https://data.addlivetag.com/shopee/#product-offer
+const UPSTREAM_BASE = 'https://data.addlivetag.com/offers/product-offer.php'
 
-type UpstreamDeal = {
-  id: number
-  src_id: string
-  itemid: number
-  shopid: number
-  img: string
-  title: string
+// Fetch top pages sorted by sales, merge into a single list. 4×50 = 200
+// items is enough breadth for a trending board and fits inside the live
+// rate-limit budget with room to spare.
+const PAGES = 4
+const LIMIT_PER_PAGE = 50
+const SORT_TYPE_SALES = 2
+
+type UpstreamProduct = {
+  itemId: number
+  name: string
   link: string
-  shop_name: string | null
+  image: string
+  catIds: number[]
+  commissionRate: number
   price: number
-  original_price: number
-  percent: number
-  amount: number
-  sold: number
-  sale_time: number
-  time_raw: string
-  sale_date: string
-  sale_slot: string
-  created_at: string
-  updated_at: string
+  priceMin: number
+  priceMax: number
+  sales: number
+  rating: number
+  shopId: number
+  shopName: string
+  startTime: number
+  endTime: number
 }
 
-type TrimmedDeal = {
+type UpstreamResp = {
+  status: string
+  dataSource: string
+  page: number
+  limit: number
+  hasNextPage: boolean
+  count: number
+  products: UpstreamProduct[]
+  stale?: boolean
+  warning?: string
+}
+
+// Same shape as the deals board client expects. Fields that product-offer.php
+// doesn't provide (originalPrice, discountPct, sold, saleSlot, saleDate,
+// saleTime, amount) are omitted — the client treats them as optional and
+// hides the corresponding UI when missing.
+type TrimmedItem = {
   id: number
   itemId: number
   shopId: number
   img: string
   title: string
   price: number
-  originalPrice: number
-  discountPct: number
-  amount: number
-  sold: number
-  saleTime: number
-  saleDate: string
-  saleSlot: string
+  amount: number // kept for type compat; product-offer has no stock, use 0
+  sold: number // maps to lifetime `sales` from upstream
+  saleTime: number // maps to offer startTime
+  saleDate: string // empty — no flash-sale slot info in this source
+  saleSlot: string // empty
+  rating?: number
+  shopName?: string
 }
 
-function trim(d: UpstreamDeal): TrimmedDeal {
+function trim(p: UpstreamProduct): TrimmedItem {
   return {
-    id: d.id,
-    itemId: d.itemid,
-    shopId: d.shopid,
-    img: d.img,
-    title: d.title,
-    price: d.price,
-    originalPrice: d.original_price,
-    discountPct: d.percent,
-    amount: d.amount,
-    sold: d.sold,
-    saleTime: d.sale_time,
-    saleDate: d.sale_date,
-    saleSlot: d.sale_slot,
+    id: p.itemId,
+    itemId: p.itemId,
+    shopId: p.shopId,
+    img: p.image,
+    title: p.name,
+    price: p.price,
+    amount: 0,
+    sold: p.sales ?? 0,
+    saleTime: p.startTime ?? 0,
+    saleDate: '',
+    saleSlot: '',
+    rating: p.rating > 0 ? p.rating : undefined,
+    shopName: p.shopName || undefined,
   }
 }
 
 export async function GET() {
   try {
-    const res = await fetch(UPSTREAM, {
-      // Impersonate the browser they expect; default Node UA is often rejected.
-      headers: {
-        'user-agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
-        referer: 'https://addlivetag.com/deal.html',
-        accept: 'application/json,*/*',
-      },
-      next: { revalidate: 60 },
-    })
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: 'UPSTREAM_ERROR', status: res.status },
-        { status: 502 }
-      )
-    }
-    const raw = (await res.json()) as UpstreamDeal[]
-    if (!Array.isArray(raw)) {
-      return NextResponse.json({ error: 'BAD_UPSTREAM_SHAPE' }, { status: 502 })
+    // Fetch pages in parallel. Each addlivetag call is ~1-2s; parallel keeps
+    // total wall time near the slowest page rather than sum.
+    const pageResults = await Promise.all(
+      Array.from({ length: PAGES }, (_, i) => i + 1).map(async (page) => {
+        const url = `${UPSTREAM_BASE}?sortType=${SORT_TYPE_SALES}&limit=${LIMIT_PER_PAGE}&page=${page}`
+        try {
+          const res = await fetch(url, {
+            headers: {
+              'user-agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+              referer: 'https://data.addlivetag.com/shopee/',
+              accept: 'application/json,*/*',
+            },
+            next: { revalidate: 60 },
+          })
+          if (!res.ok) return null
+          return (await res.json()) as UpstreamResp
+        } catch {
+          return null
+        }
+      })
+    )
+
+    const okPages = pageResults.filter((r): r is UpstreamResp => r?.status === 'success')
+    if (okPages.length === 0) {
+      return NextResponse.json({ error: 'UPSTREAM_ERROR' }, { status: 502 })
     }
 
-    // Drop expired deals (sale_time in the past). Addlivetag returns 6000
-    // items regardless of expiry — including flash sales that ran days ago —
-    // so we filter here so users only see genuinely upcoming/live deals.
-    // Small grace window (10 minutes past sale_time) covers the case where
-    // the sale is currently happening in its slot.
-    const nowSec = Math.floor(Date.now() / 1000)
-    const graceSec = 10 * 60
-    const items = raw
-      .filter((d) => typeof d.sale_time === 'number' && d.sale_time + graceSec > nowSec)
-      .map(trim)
+    // Merge + dedupe by itemId (in case pages overlap under concurrent
+    // upstream cache writes).
+    const seen = new Set<number>()
+    const items: TrimmedItem[] = []
+    for (const page of okPages) {
+      for (const p of page.products || []) {
+        if (seen.has(p.itemId)) continue
+        seen.add(p.itemId)
+        items.push(trim(p))
+      }
+    }
 
     return NextResponse.json(
       {
         items,
         count: items.length,
-        totalRaw: raw.length,
-        fetchedAt: nowSec,
+        fetchedAt: Math.floor(Date.now() / 1000),
       },
       {
         headers: {
-          // 60s edge cache; SWR another 60s so a slow upstream doesn't stall
-          // the whole board.
           'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=60',
         },
       }
