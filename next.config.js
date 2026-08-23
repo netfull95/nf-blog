@@ -105,6 +105,8 @@ module.exports = () => {
         { source: '/en/fbinfo', destination: '/en/tools/fb-info', permanent: false },
         { source: '/splink', destination: '/tools/shopee-shortlink', permanent: false },
         { source: '/en/splink', destination: '/en/tools/shopee-shortlink', permanent: false },
+        { source: '/sale', destination: '/tools/shopee-deals', permanent: false },
+        { source: '/en/sale', destination: '/en/tools/shopee-deals', permanent: false },
       ]
     },
     webpack: (config, options) => {
