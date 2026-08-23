@@ -11,4 +11,5 @@ export const tools: ToolDefinition[] = [
   { slug: 'qr-generator', i18nKey: 'qr', icon: '🔳' },
   { slug: 'fb-info', i18nKey: 'fb', icon: '🆔' },
   { slug: 'shopee-shortlink', i18nKey: 'shopee', icon: '🛒' },
+  { slug: 'shopee-deals', i18nKey: 'deals', icon: '🔥' },
 ]
