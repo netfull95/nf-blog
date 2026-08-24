@@ -3,15 +3,23 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const revalidate = 60
 
-// Combines TWO addlivetag Offers proxies to maximize product breadth:
+// Combines THREE addlivetag sources to maximize product breadth:
 //
 //   product-offer.php  → top sellers cross-shop (sortType=2)
 //   shop-offer.php     → top affiliate shops → shop-products.php per shop
+//   data_dealxk.php    → flash-sale dataset (~6000 items, discount + slot info)
+//
+// data_dealxk items may have expired flash-sale windows (upstream crawler
+// paused since 2026-08), but the products themselves still exist on Shopee
+// and the affiliate links still credit — no reason to hide them from a
+// trending board. Bonus: this source carries discount%, originalPrice,
+// amount, sold, saleSlot, saleDate that product-offer/shop-products lack.
 //
 // Fan-out per cache-miss:
 //   4 pages product-offer  (top sellers)
 //   4 pages shop-offer     (candidate shops)
 //   N shop-products calls  (one per selected top shop)
+//   1 call data_dealxk     (single ~4MB dump; cached at Vercel edge for 60s)
 //
 // addlivetag rate limits: ~100/min live, ~1000/min from their DB cache.
 // Since they cache 10-30 min, most of our fan-out hits their DB, not the
@@ -26,12 +34,13 @@ export const revalidate = 60
 const PRODUCT_OFFER_URL = 'https://data.addlivetag.com/offers/product-offer.php'
 const SHOP_OFFER_URL = 'https://data.addlivetag.com/offers/shop-offer.php'
 const SHOP_PRODUCTS_URL = 'https://data.addlivetag.com/offers/shop-products.php'
+const DATA_DEALXK_URL = 'https://addlivetag.com/api/data_dealxk.php'
 
 const PRODUCT_OFFER_PAGES = 4 // 200 raw top sellers
 const SHOP_OFFER_PAGES = 4 // 200 raw shop candidates
 const TOP_SHOPS_TO_QUERY = 40 // fan-out; shop-products caches 10min upstream
 const LIMIT_PER_PAGE = 50
-const HARD_CAP = 1500 // bounded response for reasonable payload + memory
+const HARD_CAP = 2500 // bounded response — 2500 items × ~200B ≈ 500KB
 const SORT_TYPE_SALES = 2
 
 const UA =
@@ -72,9 +81,32 @@ type ProductOfferResp = { status: string; products?: UpstreamProduct[] }
 type ShopOfferResp = { status: string; shops?: UpstreamShop[] }
 type ShopProductsResp = { status: string; products?: UpstreamProduct[] }
 
+// Legacy flash-sale dataset — different naming convention (snake_case).
+type UpstreamDealXk = {
+  id: number
+  src_id: string
+  itemid: number
+  shopid: number
+  img: string
+  title: string
+  link: string
+  shop_name: string | null
+  price: number
+  original_price: number
+  percent: number
+  amount: number
+  sold: number
+  sale_time: number
+  time_raw: string
+  sale_date: string
+  sale_slot: string
+  created_at: string
+  updated_at: string
+}
+
 // Same shape as before — client-facing fields; optionals stay unset when
-// upstream doesn't provide them (product-offer + shop-products have no
-// discount/stock/slot info).
+// upstream doesn't provide them. data_dealxk items populate the discount +
+// slot fields that product-offer/shop-products don't have.
 type TrimmedItem = {
   id: number
   itemId: number
@@ -89,9 +121,11 @@ type TrimmedItem = {
   saleSlot: string
   rating?: number
   shopName?: string
+  originalPrice?: number
+  discountPct?: number
 }
 
-function trim(p: UpstreamProduct): TrimmedItem {
+function trimProduct(p: UpstreamProduct): TrimmedItem {
   return {
     id: p.itemId,
     itemId: p.itemId,
@@ -106,6 +140,26 @@ function trim(p: UpstreamProduct): TrimmedItem {
     saleSlot: '',
     rating: p.rating > 0 ? p.rating : undefined,
     shopName: p.shopName || undefined,
+  }
+}
+
+function trimDealXk(d: UpstreamDealXk): TrimmedItem {
+  return {
+    id: d.itemid,
+    itemId: d.itemid,
+    shopId: d.shopid,
+    img: d.img,
+    title: d.title,
+    price: d.price,
+    amount: d.amount ?? 0,
+    sold: d.sold ?? 0,
+    saleTime: d.sale_time ?? 0,
+    saleDate: d.sale_date || '',
+    saleSlot: d.sale_slot || '',
+    shopName: d.shop_name || undefined,
+    originalPrice:
+      d.original_price && d.original_price > d.price ? d.original_price : undefined,
+    discountPct: d.percent && d.percent > 0 ? d.percent : undefined,
   }
 }
 
@@ -146,10 +200,15 @@ async function fetchShopProductsPage(shopId: number): Promise<UpstreamProduct[]>
   return r?.status === 'success' && r.products ? r.products : []
 }
 
+async function fetchDataDealXk(): Promise<UpstreamDealXk[]> {
+  const r = await fetchJson<UpstreamDealXk[]>(DATA_DEALXK_URL)
+  return Array.isArray(r) ? r : []
+}
+
 export async function GET() {
   try {
-    // Phase 1: two parallel bulk fetches — top sellers list + shop candidates.
-    const [productOfferPages, shopOfferPages] = await Promise.all([
+    // Phase 1: three parallel bulk fetches.
+    const [productOfferPages, shopOfferPages, dealXkItems] = await Promise.all([
       Promise.all(
         Array.from({ length: PRODUCT_OFFER_PAGES }, (_, i) => i + 1).map(
           fetchProductOfferPage
@@ -158,6 +217,7 @@ export async function GET() {
       Promise.all(
         Array.from({ length: SHOP_OFFER_PAGES }, (_, i) => i + 1).map(fetchShopOfferPage)
       ),
+      fetchDataDealXk(),
     ])
 
     const topProducts = productOfferPages.flat()
@@ -185,14 +245,24 @@ export async function GET() {
       rankedShops.map((s) => fetchShopProductsPage(s.shopId))
     )
 
-    // Merge + dedupe by itemId, capped.
+    // Merge + dedupe by itemId, capped. Product-offer + shop-products go
+    // first (fresher, richer rating data) so an id appearing in both wins
+    // the product-offer variant. data_dealxk items add breadth + carry the
+    // extra discount / slot fields when they weren't already seen.
     const seenItem = new Set<number>()
     const items: TrimmedItem[] = []
+
     for (const p of [...topProducts, ...shopProductLists.flat()]) {
       if (items.length >= HARD_CAP) break
       if (seenItem.has(p.itemId)) continue
       seenItem.add(p.itemId)
-      items.push(trim(p))
+      items.push(trimProduct(p))
+    }
+    for (const d of dealXkItems) {
+      if (items.length >= HARD_CAP) break
+      if (seenItem.has(d.itemid)) continue
+      seenItem.add(d.itemid)
+      items.push(trimDealXk(d))
     }
 
     if (items.length === 0) {

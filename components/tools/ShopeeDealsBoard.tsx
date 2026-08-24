@@ -617,6 +617,13 @@ const DealCard = ({
             -{deal.discountPct}%
           </span>
         ) : null}
+        {/* Sale-slot chip — only shown for items sourced from data_dealxk */}
+        {deal.saleSlot ? (
+          <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            🕐 {deal.saleSlot}
+            {deal.saleDate ? ` · ${deal.saleDate}` : ''}
+          </span>
+        ) : null}
       </div>
 
       <div className="flex flex-1 flex-col p-2.5">
@@ -651,6 +658,22 @@ const DealCard = ({
             </span>
           ) : null}
         </div>
+
+        {/* Stock progress bar — only when upstream provided both amount and
+            sold (flash-sale items from data_dealxk). Shows sale burn-through
+            so a user can eyeball "still available" vs "almost gone". */}
+        {deal.amount && deal.amount > 0 ? (
+          <div className="mt-1.5 space-y-0.5">
+            <div className="h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+              <div
+                className="h-full bg-orange-500"
+                style={{
+                  width: `${Math.min(100, Math.round((deal.sold / deal.amount) * 100))}%`,
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-2 flex gap-1.5">
           <button
