@@ -51,7 +51,27 @@ type FavoriteEntry = {
   snapshot: Deal
 }
 
-type Tab = 'all' | 'favorites'
+type Tab = 'all' | 'favorites' | 'mine'
+
+// Mirror of `nf-shopee-history` entry produced by the shopee-shortlink tool.
+// Both tools share this localStorage key so links a user creates in either
+// place show up in the "Của tôi" tab of the deals board.
+type SavedShortlink = {
+  id: string
+  shortLink: string
+  cleanUrl: string
+  shopId?: string
+  itemId?: string
+  productName?: string
+  imageUrl?: string
+  shopName?: string
+  price?: number
+  originalPrice?: number
+  discountPercent?: number
+  sales?: number
+  rating?: number
+  createdAt: number
+}
 
 const PRICE_TIER_META: { key: PriceTier; label: string; test: (p: number) => boolean }[] = [
   { key: 'lt1k', label: '≤ 1K', test: (p) => p <= 1_000 },
@@ -65,6 +85,8 @@ const PAGE_SIZE = 60
 const FAVORITES_KEY = 'nf-shopee-deals-favorites'
 const FAVORITES_MAX = 200
 const FILTERS_KEY = 'nf-shopee-deals-filters'
+// Shared with shopee-shortlink tool — one localStorage key, two surfaces
+const SHORTLINK_HISTORY_KEY = 'nf-shopee-history'
 
 const DEFAULT_FILTERS: Filters = {
   q: '',
@@ -98,6 +120,30 @@ const VND = new Intl.NumberFormat('vi-VN', {
   maximumFractionDigits: 0,
 })
 
+// Convert a saved shortlink history entry into a Deal so it renders in the
+// same grid alongside API items. Returns null if the record can't be mapped
+// (missing itemId/shopId — legacy entries from before we saved those).
+function savedToDeal(s: SavedShortlink): Deal | null {
+  if (!s.itemId || !s.shopId) return null
+  const itemId = Number(s.itemId)
+  const shopId = Number(s.shopId)
+  if (!Number.isFinite(itemId) || !Number.isFinite(shopId)) return null
+  return {
+    id: itemId,
+    itemId,
+    shopId,
+    img: s.imageUrl || '',
+    title: s.productName || s.cleanUrl,
+    price: s.price ?? 0,
+    sold: s.sales ?? 0,
+    saleTime: Math.floor(s.createdAt / 1000),
+    originalPrice: s.originalPrice,
+    discountPct: s.discountPercent,
+    rating: s.rating,
+    shopName: s.shopName,
+  }
+}
+
 // Simple 32-bit hash so we can shuffle deterministically per random seed.
 function seededHash(id: number, seed: number): number {
   let h = (id ^ seed) >>> 0
@@ -126,6 +172,26 @@ const ShopeeDealsBoard = () => {
 
   const [activeTab, setActiveTab] = useState<Tab>('all')
   const [favorites, setFavorites] = useState<FavoriteEntry[]>([])
+  const [myLinks, setMyLinks] = useState<SavedShortlink[]>([])
+
+  // Inline URL-input state (paste Shopee URL → generate affiliate + save)
+  const [urlInput, setUrlInput] = useState('')
+  const [urlSubmitting, setUrlSubmitting] = useState(false)
+  const [urlMessage, setUrlMessage] = useState<
+    { kind: 'ok' | 'err'; text: string } | null
+  >(null)
+
+  // Load shortlink history once (shared with /tools/shopee-shortlink)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SHORTLINK_HISTORY_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as SavedShortlink[]
+      if (Array.isArray(parsed)) setMyLinks(parsed)
+    } catch {
+      /* ignore malformed */
+    }
+  }, [])
 
   // Load persisted filters once on mount (client-only)
   useEffect(() => {
@@ -241,17 +307,22 @@ const ShopeeDealsBoard = () => {
   // ---- Filter + sort ------------------------------------------------------
 
   const filtered = useMemo(() => {
-    if (state.kind !== 'ok') return []
+    if (state.kind !== 'ok' && activeTab !== 'mine') return []
 
-    // Data source depends on active tab. On Favorites tab, prefer the current
-    // fresh version of each favorite when it's still in the upstream data
-    // (fresher price/sold) and fall back to the snapshot when it's not.
+    // Data source depends on active tab.
+    //   all       → upstream trending items
+    //   favorites → favorites list, preferring current upstream data (fresher)
+    //   mine      → shortlink history from localStorage (works offline)
     let arr: Deal[]
     if (activeTab === 'favorites') {
-      const byId = new Map(state.data.items.map((d) => [d.id, d]))
+      const byId = new Map(
+        state.kind === 'ok' ? state.data.items.map((d) => [d.id, d] as const) : []
+      )
       arr = favorites.map((f) => byId.get(f.id) || f.snapshot)
+    } else if (activeTab === 'mine') {
+      arr = myLinks.map(savedToDeal).filter((d): d is Deal => d !== null)
     } else {
-      arr = state.data.items
+      arr = state.kind === 'ok' ? state.data.items : []
     }
 
     if (filters.q.trim()) {
@@ -283,7 +354,7 @@ const ShopeeDealsBoard = () => {
         break
     }
     return arr
-  }, [state, filters, randomSeed, activeTab, favorites])
+  }, [state, filters, randomSeed, activeTab, favorites, myLinks])
 
   // Reset visible count when filters or active tab change
   useEffect(() => {
@@ -308,6 +379,85 @@ const ShopeeDealsBoard = () => {
       /* ignore */
     }
   }
+
+  // Submit a Shopee URL through the same pipeline as /tools/shopee-shortlink,
+  // save the result to the shared history localStorage, jump to the "Của tôi"
+  // tab so the user sees the just-added card.
+  const submitUrl = async () => {
+    const url = urlInput.trim()
+    if (!url) return
+    setUrlSubmitting(true)
+    setUrlMessage(null)
+    try {
+      const res = await fetch('/api/tools/shopee-shortlink', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        shortLink?: string
+        longLink?: string
+        shopId?: string
+        itemId?: string
+        productName?: string
+        retryAfterSec?: number
+      }
+      if (!res.ok || !json.shortLink) {
+        setUrlMessage({ kind: 'err', text: t('urlErrorGeneric') })
+        return
+      }
+      const entry: SavedShortlink = {
+        id:
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`,
+        shortLink: json.shortLink,
+        cleanUrl: json.longLink || '',
+        shopId: json.shopId,
+        itemId: json.itemId,
+        productName: json.productName,
+        createdAt: Date.now(),
+      }
+      setMyLinks((prev) => {
+        // Dedupe by cleanUrl — pasting the same URL twice moves it to top.
+        const withoutDupe = prev.filter((h) => h.cleanUrl !== entry.cleanUrl)
+        const next = [entry, ...withoutDupe].slice(0, 50)
+        try {
+          localStorage.setItem(SHORTLINK_HISTORY_KEY, JSON.stringify(next))
+        } catch {
+          /* quota */
+        }
+        return next
+      })
+      setUrlInput('')
+      setUrlMessage({ kind: 'ok', text: t('urlSaved') })
+      setActiveTab('mine')
+      setTimeout(() => setUrlMessage(null), 3000)
+    } catch {
+      setUrlMessage({ kind: 'err', text: t('urlErrorNetwork') })
+    } finally {
+      setUrlSubmitting(false)
+    }
+  }
+
+  // Infinite-scroll sentinel — IntersectionObserver bumps visibleCount by
+  // PAGE_SIZE whenever it enters the viewport, up to the current total.
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((n) => n + PAGE_SIZE)
+        }
+      },
+      { rootMargin: '400px 0px' } // preload a bit before the user hits the bottom
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [filtered.length])
 
   const copyDealLink = async (deal: Deal) => {
     const url = toAffiliateUrl(deal.shopId, deal.itemId)
@@ -347,6 +497,10 @@ const ShopeeDealsBoard = () => {
           ❤️ {t('tabFavorites')}
           <span className="ml-1.5 text-xs opacity-70">({favorites.length})</span>
         </TabButton>
+        <TabButton active={activeTab === 'mine'} onClick={() => setActiveTab('mine')}>
+          🔗 {t('tabMine')}
+          <span className="ml-1.5 text-xs opacity-70">({myLinks.length})</span>
+        </TabButton>
         {activeTab === 'favorites' && favorites.length > 0 && (
           <button
             type="button"
@@ -356,6 +510,47 @@ const ShopeeDealsBoard = () => {
             {t('favoritesClearBtn')}
           </button>
         )}
+      </div>
+
+      {/* URL input — paste a Shopee URL to generate affiliate + save into
+          shared shortlink history (also visible in /tools/shopee-shortlink) */}
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-900/40">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="url"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void submitUrl()
+              }
+            }}
+            placeholder={t('urlPlaceholder')}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            onClick={submitUrl}
+            disabled={urlSubmitting || !urlInput.trim()}
+            className="bg-primary-500 hover:bg-primary-600 inline-flex shrink-0 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {urlSubmitting ? t('urlSubmitting') : t('urlSubmit')}
+          </button>
+        </div>
+        {urlMessage ? (
+          <p
+            className={
+              'mt-1.5 text-xs ' +
+              (urlMessage.kind === 'ok'
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400')
+            }
+          >
+            {urlMessage.text}
+          </p>
+        ) : null}
       </div>
 
       {/* Top bar: search + refresh countdown */}
@@ -462,19 +657,19 @@ const ShopeeDealsBoard = () => {
       )}
 
       {/* States */}
-      {state.kind === 'loading' && (
+      {state.kind === 'loading' && activeTab !== 'mine' && (
         <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/40">
           {t('loading')}
         </div>
       )}
-      {state.kind === 'error' && (
+      {state.kind === 'error' && activeTab !== 'mine' && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200">
           {t('errorLoading')}: {state.msg}
         </div>
       )}
 
-      {/* Grid */}
-      {state.kind === 'ok' && (
+      {/* Grid — visible on any tab that has resolved data */}
+      {(state.kind === 'ok' || activeTab === 'mine') && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {visibleDeals.map((d) => (
@@ -493,18 +688,20 @@ const ShopeeDealsBoard = () => {
             <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/40">
               {activeTab === 'favorites' && favorites.length === 0
                 ? t('favoritesEmpty')
-                : t('empty')}
+                : activeTab === 'mine' && myLinks.length === 0
+                  ? t('mineEmpty')
+                  : t('empty')}
             </div>
           )}
+          {/* Infinite-scroll sentinel — invisible, triggers next page when
+              it scrolls into view. rootMargin preloads before hitting bottom. */}
           {totalMatching > visibleCount && (
-            <div className="flex justify-center pt-2">
-              <button
-                type="button"
-                onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:border-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-              >
-                {t('loadMore', { n: Math.min(PAGE_SIZE, totalMatching - visibleCount) })}
-              </button>
+            <div
+              ref={sentinelRef}
+              className="flex items-center justify-center py-4 text-xs text-gray-400"
+              aria-hidden
+            >
+              {t('loadingMore')}
             </div>
           )}
         </>
