@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { buildAffiliateLinkFromIds } from '@/lib/shopee/buildAffiliateLink'
+import { sanitizeShopeeUrl } from '@/lib/shopee/sanitizeShopeeUrl'
 
 type Deal = {
   id: number
@@ -174,12 +175,21 @@ const ShopeeDealsBoard = () => {
   const [favorites, setFavorites] = useState<FavoriteEntry[]>([])
   const [myLinks, setMyLinks] = useState<SavedShortlink[]>([])
 
-  // Inline URL-input state (paste Shopee URL → generate affiliate + save)
-  const [urlInput, setUrlInput] = useState('')
+  // URL-generation state — the input value lives in `filters.q` (single
+  // field for both search and URL paste; see `isUrl` below).
   const [urlSubmitting, setUrlSubmitting] = useState(false)
   const [urlMessage, setUrlMessage] = useState<
     { kind: 'ok' | 'err'; text: string } | null
   >(null)
+
+  // Detect whether the input currently contains a valid Shopee product URL.
+  // When true, we switch the field's behavior from "search filter" to
+  // "generate affiliate link" — hint text + CTA button appear, and the
+  // filter pipeline stops narrowing the board.
+  const isUrl = useMemo(
+    () => sanitizeShopeeUrl(filters.q.trim()).ok,
+    [filters.q]
+  )
 
   // Load shortlink history once (shared with /tools/shopee-shortlink)
   useEffect(() => {
@@ -325,7 +335,10 @@ const ShopeeDealsBoard = () => {
       arr = state.kind === 'ok' ? state.data.items : []
     }
 
-    if (filters.q.trim()) {
+    // Only apply search-filter when the input is TEXT (not a Shopee URL).
+    // URL-mode should show the full board so user can review then decide
+    // to hit "Tạo link" without the board flashing empty.
+    if (!isUrl && filters.q.trim()) {
       const q = filters.q.trim().toLowerCase()
       arr = arr.filter((d) => d.title.toLowerCase().includes(q))
     }
@@ -354,7 +367,7 @@ const ShopeeDealsBoard = () => {
         break
     }
     return arr
-  }, [state, filters, randomSeed, activeTab, favorites, myLinks])
+  }, [state, filters, randomSeed, activeTab, favorites, myLinks, isUrl])
 
   // Reset visible count when filters or active tab change
   useEffect(() => {
@@ -380,12 +393,14 @@ const ShopeeDealsBoard = () => {
     }
   }
 
-  // Submit a Shopee URL through the same pipeline as /tools/shopee-shortlink,
-  // save the result to the shared history localStorage, jump to the "Của tôi"
-  // tab so the user sees the just-added card.
+  // Submit the Shopee URL currently in the input through the same pipeline
+  // as /tools/shopee-shortlink, save the result to the shared history
+  // localStorage, jump to the "Của tôi" tab so the user sees the new card.
+  // No-op when the input isn't a URL — Enter on plain text does nothing
+  // because the search filter is already live via onChange.
   const submitUrl = async () => {
-    const url = urlInput.trim()
-    if (!url) return
+    const url = filters.q.trim()
+    if (!url || !isUrl) return
     setUrlSubmitting(true)
     setUrlMessage(null)
     try {
@@ -430,7 +445,8 @@ const ShopeeDealsBoard = () => {
         }
         return next
       })
-      setUrlInput('')
+      // Clear the input so the URL doesn't linger in filter localStorage.
+      setFilters((f) => ({ ...f, q: '' }))
       setUrlMessage({ kind: 'ok', text: t('urlSaved') })
       setActiveTab('mine')
       setTimeout(() => setUrlMessage(null), 3000)
@@ -512,37 +528,70 @@ const ShopeeDealsBoard = () => {
         )}
       </div>
 
-      {/* URL input — paste a Shopee URL to generate affiliate + save into
-          shared shortlink history (also visible in /tools/shopee-shortlink) */}
-      <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-900/40">
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            type="url"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                void submitUrl()
-              }
-            }}
-            placeholder={t('urlPlaceholder')}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-            spellCheck={false}
-          />
-          <button
-            type="button"
-            onClick={submitUrl}
-            disabled={urlSubmitting || !urlInput.trim()}
-            className="bg-primary-500 hover:bg-primary-600 inline-flex shrink-0 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {urlSubmitting ? t('urlSubmitting') : t('urlSubmit')}
-          </button>
+      {/* Unified input row — one field does double duty:
+             - text mode: live-filter the visible cards by title (filters.q)
+             - URL mode:  show CTA + generate affiliate link via submitUrl
+          Detection is derived (isUrl); the same value drives both. */}
+      <div className="space-y-1">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:flex-1">
+            <span
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm"
+              aria-hidden
+            >
+              {isUrl ? '🔗' : '🔍'}
+            </span>
+            <input
+              type="text"
+              value={filters.q}
+              onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && isUrl) {
+                  e.preventDefault()
+                  void submitUrl()
+                }
+              }}
+              placeholder={t('searchPlaceholder')}
+              className="w-full rounded-md border border-gray-300 bg-white py-2 pr-3 pl-9 text-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              spellCheck={false}
+            />
+          </div>
+          {isUrl && (
+            <button
+              type="button"
+              onClick={submitUrl}
+              disabled={urlSubmitting}
+              className="bg-primary-500 hover:bg-primary-600 inline-flex shrink-0 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {urlSubmitting ? t('urlSubmitting') : t('urlSubmit')}
+            </button>
+          )}
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            {state.kind === 'ok' && (
+              <span>
+                {t('refreshCountdown', { n: nextRefreshSec })} · {state.data.count}{' '}
+                {t('itemsTotal')}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => void fetchDeals(true)}
+              disabled={refreshing}
+              className="hover:text-primary-500 dark:hover:text-primary-400 rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-gray-700"
+            >
+              {refreshing ? '⟳' : '🔄'} {t('refreshNow')}
+            </button>
+          </div>
         </div>
+        {filters.q.trim() ? (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {isUrl ? t('hintUrlMode') : t('hintSearchMode')}
+          </p>
+        ) : null}
         {urlMessage ? (
           <p
             className={
-              'mt-1.5 text-xs ' +
+              'text-xs ' +
               (urlMessage.kind === 'ok'
                 ? 'text-green-600 dark:text-green-400'
                 : 'text-red-600 dark:text-red-400')
@@ -551,33 +600,6 @@ const ShopeeDealsBoard = () => {
             {urlMessage.text}
           </p>
         ) : null}
-      </div>
-
-      {/* Top bar: search + refresh countdown */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <input
-          type="search"
-          value={filters.q}
-          onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
-          placeholder={t('searchPlaceholder')}
-          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 sm:w-72"
-        />
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          {state.kind === 'ok' && (
-            <span>
-              {t('refreshCountdown', { n: nextRefreshSec })} · {state.data.count}{' '}
-              {t('itemsTotal')}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => void fetchDeals(true)}
-            disabled={refreshing}
-            className="hover:text-primary-500 dark:hover:text-primary-400 rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-gray-700"
-          >
-            {refreshing ? '⟳' : '🔄'} {t('refreshNow')}
-          </button>
-        </div>
       </div>
 
       {/* Filter groups */}
