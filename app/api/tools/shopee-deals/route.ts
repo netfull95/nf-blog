@@ -40,7 +40,11 @@ const PRODUCT_OFFER_PAGES = 4 // 200 raw top sellers
 const SHOP_OFFER_PAGES = 4 // 200 raw shop candidates
 const TOP_SHOPS_TO_QUERY = 40 // fan-out; shop-products caches 10min upstream
 const LIMIT_PER_PAGE = 50
-const HARD_CAP = 2500 // bounded response — 2500 items × ~200B ≈ 500KB
+// Loose upper bound only for pathological inputs; realistic post-dedup is
+// ~6000-7500 across all 3 sources (data_dealxk carries ~6000 alone). At
+// ~200B/item that's ~1.4MB uncompressed, ~300KB gzipped — comfortable for
+// Vercel Edge cache and client memory.
+const HARD_CAP = 10_000
 const SORT_TYPE_SALES = 2
 
 const UA =

@@ -44,7 +44,12 @@ function maybeRewriteAlias(req: NextRequest): NextResponse | null {
   if (!target) return null
   const url = req.nextUrl.clone()
   url.pathname = target
-  return NextResponse.rewrite(url)
+  // Propagate a hint so the layout can render a "chromeless" landing —
+  // aliased URLs like /sale are meant to be shared as a focused tool, so
+  // we hide the site header on them.
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set('x-nf-hide-chrome', '1')
+  return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
 }
 
 export default function middleware(req: NextRequest) {

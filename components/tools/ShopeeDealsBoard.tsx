@@ -4,6 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { buildAffiliateLinkFromIds } from '@/lib/shopee/buildAffiliateLink'
 import { sanitizeShopeeUrl } from '@/lib/shopee/sanitizeShopeeUrl'
+import { isShortlinkHost } from '@/lib/shopee/expandShortlink'
+import {
+  addToHistory as sharedAddToHistory,
+  fetchProductPreview,
+  loadHistory,
+  newHistoryId,
+  saveHistory,
+  type PreviewFields,
+  type SavedShortlink,
+} from '@/lib/shopee/history'
 
 type Deal = {
   id: number
@@ -54,26 +64,6 @@ type FavoriteEntry = {
 
 type Tab = 'all' | 'favorites' | 'mine'
 
-// Mirror of `nf-shopee-history` entry produced by the shopee-shortlink tool.
-// Both tools share this localStorage key so links a user creates in either
-// place show up in the "Của tôi" tab of the deals board.
-type SavedShortlink = {
-  id: string
-  shortLink: string
-  cleanUrl: string
-  shopId?: string
-  itemId?: string
-  productName?: string
-  imageUrl?: string
-  shopName?: string
-  price?: number
-  originalPrice?: number
-  discountPercent?: number
-  sales?: number
-  rating?: number
-  createdAt: number
-}
-
 const PRICE_TIER_META: { key: PriceTier; label: string; test: (p: number) => boolean }[] = [
   { key: 'lt1k', label: '≤ 1K', test: (p) => p <= 1_000 },
   { key: '1kto9k', label: '1K – 9K', test: (p) => p > 1_000 && p <= 9_000 },
@@ -86,8 +76,6 @@ const PAGE_SIZE = 60
 const FAVORITES_KEY = 'nf-shopee-deals-favorites'
 const FAVORITES_MAX = 200
 const FILTERS_KEY = 'nf-shopee-deals-filters'
-// Shared with shopee-shortlink tool — one localStorage key, two surfaces
-const SHORTLINK_HISTORY_KEY = 'nf-shopee-history'
 
 const DEFAULT_FILTERS: Filters = {
   q: '',
@@ -95,6 +83,11 @@ const DEFAULT_FILTERS: Filters = {
   ratingMin: 0,
   sort: 'sold',
 }
+// After user's sort is applied on the "Tất cả" tab, take the top N items
+// and reshuffle just those — user's sort still decides WHICH N items get
+// surfaced (e.g. top 200 by sales), but their order within the top is
+// randomized on every fetch so the board feels fresh.
+const RESHUFFLE_TOP = 200
 
 // JSON can't round-trip Set — convert to/from arrays for localStorage.
 type FiltersWire = Omit<Filters, 'priceTiers'> & {
@@ -174,6 +167,11 @@ const ShopeeDealsBoard = () => {
   const [activeTab, setActiveTab] = useState<Tab>('all')
   const [favorites, setFavorites] = useState<FavoriteEntry[]>([])
   const [myLinks, setMyLinks] = useState<SavedShortlink[]>([])
+  // itemIds of products the user just created via the URL input this session.
+  // Rendered on the "Tất cả" tab pinned above all filter/sort results — so
+  // the new card is always visible right after paste, regardless of active
+  // filters. Session-only (myLinks localStorage covers cross-session).
+  const [pinnedIds, setPinnedIds] = useState<number[]>([])
 
   // URL-generation state — the input value lives in `filters.q` (single
   // field for both search and URL paste; see `isUrl` below).
@@ -182,25 +180,28 @@ const ShopeeDealsBoard = () => {
     { kind: 'ok' | 'err'; text: string } | null
   >(null)
 
-  // Detect whether the input currently contains a valid Shopee product URL.
+  // Detect whether the input currently contains a Shopee URL we can process
+  // through the shortlink pipeline. Accepts EITHER:
+  //   - A shortlink host (s.shopee.vn / shp.ee / …) — server will expand it
+  //   - A canonical product URL sanitizeShopeeUrl can parse directly
   // When true, we switch the field's behavior from "search filter" to
   // "generate affiliate link" — hint text + CTA button appear, and the
   // filter pipeline stops narrowing the board.
-  const isUrl = useMemo(
-    () => sanitizeShopeeUrl(filters.q.trim()).ok,
-    [filters.q]
-  )
+  const isUrl = useMemo(() => {
+    const trimmed = filters.q.trim()
+    if (!trimmed) return false
+    try {
+      const u = new URL(trimmed)
+      if (isShortlinkHost(u.hostname.toLowerCase())) return true
+    } catch {
+      /* not a URL at all */
+    }
+    return sanitizeShopeeUrl(trimmed).ok
+  }, [filters.q])
 
   // Load shortlink history once (shared with /tools/shopee-shortlink)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SHORTLINK_HISTORY_KEY)
-      if (!raw) return
-      const parsed = JSON.parse(raw) as SavedShortlink[]
-      if (Array.isArray(parsed)) setMyLinks(parsed)
-    } catch {
-      /* ignore malformed */
-    }
+    setMyLinks(loadHistory())
   }, [])
 
   // Load persisted filters once on mount (client-only)
@@ -289,6 +290,10 @@ const ShopeeDealsBoard = () => {
       const json = (await res.json()) as ApiResp
       setState({ kind: 'ok', data: json })
       setNextRefreshSec(REFRESH_INTERVAL_MS / 1000)
+      // Bump the random-sort seed on every successful fetch so users on
+      // sort=random (default) see a reshuffled order after each 60s tick.
+      // No-op visually for other sort modes.
+      setRandomSeed(Date.now() & 0xffffffff)
     } catch (e) {
       setState({
         kind: 'error',
@@ -299,13 +304,25 @@ const ShopeeDealsBoard = () => {
     }
   }, [])
 
+  // Auto-refresh is skipped when the user has scrolled past the initial
+  // fold — they're actively browsing and a background reshuffle would move
+  // cards out from under them. Threshold picked to cover the tab bar +
+  // input + one filter row.
+  const SCROLL_PAUSE_PX = 300
+  const shouldAutoRefresh = () =>
+    typeof window !== 'undefined' &&
+    document.visibilityState === 'visible' &&
+    window.scrollY < SCROLL_PAUSE_PX
+
   useEffect(() => {
     void fetchDeals()
     timerRef.current = setInterval(() => {
-      // Pause auto-refresh when tab hidden — user isn't looking, no reason to spam
-      if (document.visibilityState === 'visible') void fetchDeals(true)
+      if (shouldAutoRefresh()) void fetchDeals(true)
     }, REFRESH_INTERVAL_MS)
     countdownRef.current = setInterval(() => {
+      // Freeze the visible countdown while paused so the UI matches reality
+      // (no misleading "auto-refresh in 3s" if we won't actually refresh).
+      if (!shouldAutoRefresh()) return
       setNextRefreshSec((s) => (s > 0 ? s - 1 : REFRESH_INTERVAL_MS / 1000))
     }, 1_000)
     return () => {
@@ -320,7 +337,7 @@ const ShopeeDealsBoard = () => {
     if (state.kind !== 'ok' && activeTab !== 'mine') return []
 
     // Data source depends on active tab.
-    //   all       → upstream trending items
+    //   all       → upstream trending items + saved localStorage links merged
     //   favorites → favorites list, preferring current upstream data (fresher)
     //   mine      → shortlink history from localStorage (works offline)
     let arr: Deal[]
@@ -332,7 +349,20 @@ const ShopeeDealsBoard = () => {
     } else if (activeTab === 'mine') {
       arr = myLinks.map(savedToDeal).filter((d): d is Deal => d !== null)
     } else {
-      arr = state.kind === 'ok' ? state.data.items : []
+      // "Tất cả": union of upstream + myLinks, deduped by id. Upstream data
+      // wins on conflict (fresher price/rating/sold) while myLinks entries
+      // not present upstream still appear in the main board.
+      const upstream = state.kind === 'ok' ? state.data.items : []
+      const myLinkDeals = myLinks
+        .map(savedToDeal)
+        .filter((d): d is Deal => d !== null)
+      const seen = new Set<number>()
+      arr = []
+      for (const d of [...upstream, ...myLinkDeals]) {
+        if (seen.has(d.id)) continue
+        seen.add(d.id)
+        arr.push(d)
+      }
     }
 
     // Only apply search-filter when the input is TEXT (not a Shopee URL).
@@ -366,8 +396,42 @@ const ShopeeDealsBoard = () => {
         )
         break
     }
+
+    // Reshuffle-top on "Tất cả": take the first RESHUFFLE_TOP items by
+    // user's sort, randomize order within just that band, then keep the
+    // remaining items (position RESHUFFLE_TOP+ onwards) in their sorted
+    // order below. Every successful fetch bumps randomSeed (see fetchDeals)
+    // so the visible top reshuffles each refresh — while total item count
+    // is preserved. Skip for 'random' sort (already fully shuffled).
+    if (
+      activeTab === 'all' &&
+      filters.sort !== 'random' &&
+      arr.length > RESHUFFLE_TOP
+    ) {
+      const top = arr.slice(0, RESHUFFLE_TOP)
+      const rest = arr.slice(RESHUFFLE_TOP)
+      const shuffledTop = [...top].sort(
+        (a, b) => seededHash(a.id, randomSeed) - seededHash(b.id, randomSeed)
+      )
+      arr = [...shuffledTop, ...rest]
+    }
+
+    // Pin newly-created items to the very top of the "Tất cả" tab, bypassing
+    // filters, sort, and the reshuffle above. Ensures a just-generated card
+    // is instantly visible after paste even if the active filter would
+    // exclude it or the shuffle would bury it.
+    if (activeTab === 'all' && pinnedIds.length > 0) {
+      const allItems = state.kind === 'ok' ? state.data.items : []
+      const pinnedSet = new Set(pinnedIds)
+      const pinned = pinnedIds
+        .map((id) => allItems.find((d) => d.id === id))
+        .filter((d): d is Deal => d !== undefined)
+      const rest = arr.filter((d) => !pinnedSet.has(d.id))
+      arr = [...pinned, ...rest]
+    }
+
     return arr
-  }, [state, filters, randomSeed, activeTab, favorites, myLinks, isUrl])
+  }, [state, filters, randomSeed, activeTab, favorites, myLinks, isUrl, pinnedIds])
 
   // Reset visible count when filters or active tab change
   useEffect(() => {
@@ -394,10 +458,15 @@ const ShopeeDealsBoard = () => {
   }
 
   // Submit the Shopee URL currently in the input through the same pipeline
-  // as /tools/shopee-shortlink, save the result to the shared history
-  // localStorage, jump to the "Của tôi" tab so the user sees the new card.
+  // as /tools/shopee-shortlink (server handles both canonical URLs AND
+  // shortlink expansion). On success:
+  //   1. Save entry to shared history (visible in "Của tôi" tab + splink tool)
+  //   2. Prepend the created deal to state.data.items so it appears at
+  //      the top of the "Tất cả" list — no auto-tab-switch
+  //   3. Clear the input so the URL doesn't linger in filter localStorage
+  //
   // No-op when the input isn't a URL — Enter on plain text does nothing
-  // because the search filter is already live via onChange.
+  // (search filter is already live via onChange).
   const submitUrl = async () => {
     const url = filters.q.trim()
     if (!url || !isUrl) return
@@ -422,33 +491,46 @@ const ShopeeDealsBoard = () => {
         setUrlMessage({ kind: 'err', text: t('urlErrorGeneric') })
         return
       }
+      // Enrich the entry with product info from addlivetag BEFORE saving,
+      // so the card shows image/title/price on first render instead of an
+      // ugly URL-as-title placeholder. Preview fetch is best-effort —
+      // on failure we still save the minimal entry and mark it 'failed'
+      // so mount-time refetches don't hammer the API.
+      const preview: PreviewFields | null = json.itemId
+        ? await fetchProductPreview(json.itemId)
+        : null
+      const hasPreview = preview !== null && Object.keys(preview).length > 0
       const entry: SavedShortlink = {
-        id:
-          typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`,
+        id: newHistoryId(),
         shortLink: json.shortLink,
         cleanUrl: json.longLink || '',
         shopId: json.shopId,
         itemId: json.itemId,
-        productName: json.productName,
+        productName: json.productName || preview?.productName,
         createdAt: Date.now(),
+        ...(preview || {}),
+        previewStatus: hasPreview ? undefined : 'failed',
       }
+      // Shared history — dedupe + prepend + cap (also visible in splink tool).
       setMyLinks((prev) => {
-        // Dedupe by cleanUrl — pasting the same URL twice moves it to top.
-        const withoutDupe = prev.filter((h) => h.cleanUrl !== entry.cleanUrl)
-        const next = [entry, ...withoutDupe].slice(0, 50)
-        try {
-          localStorage.setItem(SHORTLINK_HISTORY_KEY, JSON.stringify(next))
-        } catch {
-          /* quota */
-        }
+        const next = sharedAddToHistory(entry, prev)
+        saveHistory(next)
         return next
       })
-      // Clear the input so the URL doesn't linger in filter localStorage.
+      // Push the just-created product to the top of the main board too, so
+      // the user sees it without switching tabs. Also pin the itemId so
+      // filter/sort don't shuffle it away.
+      const asDeal = savedToDeal(entry)
+      if (asDeal) {
+        setState((s) => {
+          if (s.kind !== 'ok') return s
+          const items = [asDeal, ...s.data.items.filter((d) => d.id !== asDeal.id)]
+          return { kind: 'ok', data: { ...s.data, items, count: items.length } }
+        })
+        setPinnedIds((prev) => [asDeal.id, ...prev.filter((id) => id !== asDeal.id)].slice(0, 10))
+      }
       setFilters((f) => ({ ...f, q: '' }))
       setUrlMessage({ kind: 'ok', text: t('urlSaved') })
-      setActiveTab('mine')
       setTimeout(() => setUrlMessage(null), 3000)
     } catch {
       setUrlMessage({ kind: 'err', text: t('urlErrorNetwork') })

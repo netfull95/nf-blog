@@ -2,6 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
+import {
+  addToHistory as sharedAddToHistory,
+  fetchProductPreview,
+  loadHistory,
+  newHistoryId,
+  saveHistory,
+  type SavedShortlink,
+} from '@/lib/shopee/history'
 
 type SuccessData = {
   shortLink: string
@@ -24,42 +32,9 @@ type ApiState =
   | { kind: 'ok'; data: SuccessData }
   | { kind: 'error'; err: ApiError }
 
-type SavedLink = {
-  id: string
-  shortLink: string
-  cleanUrl: string
-  shopId?: string
-  itemId?: string
-  productName?: string
-  imageUrl?: string
-  // Buyer-facing product info from addlivetag preview. Commission-related
-  // fields (commission, sellerComFinal, isXtra, cap*, etc.) are intentionally
-  // NOT stored or displayed — those are internal metrics, not for visitors.
-  shopName?: string
-  price?: number
-  originalPrice?: number
-  discountPercent?: number
-  flashSale?: boolean
-  stockAvailable?: number
-  sales?: number
-  rating?: number
-  minPrice?: number
-  createdAt: number
-  // 'pending' when a preview fetch hasn't been attempted yet, 'failed' when
-  // addlivetag returned no data (product delisted / not in their DB) so we
-  // don't re-fetch on every mount. Omitted once we successfully have data.
-  previewStatus?: 'pending' | 'failed'
-}
-
-const HISTORY_KEY = 'nf-shopee-history'
-const HISTORY_MAX = 50
-
-// Public product-data API from addlivetag.com — returns productName + imageUrl
-// for a Shopee item_id. CORS-enabled (`Access-Control-Allow-Origin: *`), so
-// we call it directly from the browser without a proxy. Rate limit is
-// generous (2000/min from their DB cache) and enforced per client IP.
-// Docs: https://github.com/bcat95/shopee-aff/blob/main/product-data-api.md
-const PREVIEW_API = 'https://data.addlivetag.com/product-data/product-data.php'
+// Local alias for readability — the shared type covers every field either
+// tool might store; this component uses the same shape.
+type SavedLink = SavedShortlink
 
 const ShopeeShortlinkGenerator = () => {
   const t = useTranslations('Tools.shopee')
@@ -72,23 +47,12 @@ const ShopeeShortlinkGenerator = () => {
 
   // Load history from localStorage on mount (client-only)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(HISTORY_KEY)
-      if (!raw) return
-      const parsed = JSON.parse(raw) as SavedLink[]
-      if (Array.isArray(parsed)) setHistory(parsed.slice(0, HISTORY_MAX))
-    } catch {
-      /* ignore malformed history */
-    }
+    setHistory(loadHistory())
   }, [])
 
   const persistHistory = useCallback((next: SavedLink[]) => {
     setHistory(next)
-    try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
-    } catch {
-      /* quota exceeded or blocked — nothing we can do */
-    }
+    saveHistory(next)
   }, [])
 
   // Lazy-fetch productName + imageUrl for history items that don't have one
@@ -109,108 +73,38 @@ const ShopeeShortlinkGenerator = () => {
     let cancelled = false
     ;(async () => {
       for (const item of pending) {
-        try {
-          const res = await fetch(
-            `${PREVIEW_API}?item_id=${encodeURIComponent(item.itemId!)}`
-          )
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          const json = (await res.json()) as {
-            productInfo?: {
-              productName?: string | null
-              imageUrl?: string | null
-              shopName?: string | null
-              price?: number | null
-              sales?: number | null
-              rating?: string | number | null
-              latestPriceHistory?: {
-                originalPrice?: number | null
-                discountPercent?: number | null
-                flashSale?: boolean | null
-                stockAvailable?: number | null
-              } | null
-              priceStats?: { minPrice?: number | null } | null
+        const preview = await fetchProductPreview(item.itemId!)
+        if (cancelled) return
+        setHistory((prev) => {
+          const next = prev.map((h) => {
+            if (h.id !== item.id) return h
+            // preview === null → fetch failed; preview === {} → API OK but
+            // no data (product not in DB / delisted). Both cases mark 'failed'
+            // to avoid retry storm; leave the item's existing fields intact.
+            if (!preview || Object.keys(preview).length === 0) {
+              return { ...h, previewStatus: 'failed' as const }
             }
-          }
-          const info = json.productInfo || {}
-          const preview = {
-            productName: info.productName || undefined,
-            imageUrl: info.imageUrl || undefined,
-            shopName: info.shopName || undefined,
-            price: typeof info.price === 'number' && info.price > 0 ? info.price : undefined,
-            sales: typeof info.sales === 'number' && info.sales > 0 ? info.sales : undefined,
-            rating:
-              info.rating != null && info.rating !== ''
-                ? Number(info.rating)
-                : undefined,
-            originalPrice:
-              info.latestPriceHistory?.originalPrice &&
-              info.latestPriceHistory.originalPrice > 0
-                ? info.latestPriceHistory.originalPrice
-                : undefined,
-            discountPercent:
-              info.latestPriceHistory?.discountPercent &&
-              info.latestPriceHistory.discountPercent > 0
-                ? info.latestPriceHistory.discountPercent
-                : undefined,
-            flashSale: info.latestPriceHistory?.flashSale === true || undefined,
-            stockAvailable:
-              typeof info.latestPriceHistory?.stockAvailable === 'number'
-                ? info.latestPriceHistory.stockAvailable
-                : undefined,
-            minPrice:
-              typeof info.priceStats?.minPrice === 'number' && info.priceStats.minPrice > 0
-                ? info.priceStats.minPrice
-                : undefined,
-          }
-          const gotAnything = Object.values(preview).some((v) => v !== undefined)
-          if (cancelled) return
-          setHistory((prev) => {
-            const next = prev.map((h) =>
-              h.id === item.id
-                ? gotAnything
-                  ? {
-                      ...h,
-                      // Only overwrite fields the item doesn't have yet, so a
-                      // user-edited productName wouldn't get clobbered on refetch
-                      productName: h.productName || preview.productName,
-                      imageUrl: h.imageUrl || preview.imageUrl,
-                      shopName: h.shopName || preview.shopName,
-                      price: h.price ?? preview.price,
-                      sales: h.sales ?? preview.sales,
-                      rating: h.rating ?? preview.rating,
-                      originalPrice: h.originalPrice ?? preview.originalPrice,
-                      discountPercent: h.discountPercent ?? preview.discountPercent,
-                      flashSale: h.flashSale ?? preview.flashSale,
-                      stockAvailable: h.stockAvailable ?? preview.stockAvailable,
-                      minPrice: h.minPrice ?? preview.minPrice,
-                      previewStatus: undefined,
-                    }
-                  : { ...h, previewStatus: 'failed' as const }
-                : h
-            )
-            try {
-              localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
-            } catch {
-              /* ignore */
+            return {
+              ...h,
+              // Only fill fields the item is missing so a re-fetch doesn't
+              // clobber values the user (or previous fetch) already set.
+              productName: h.productName || preview.productName,
+              imageUrl: h.imageUrl || preview.imageUrl,
+              shopName: h.shopName || preview.shopName,
+              price: h.price ?? preview.price,
+              sales: h.sales ?? preview.sales,
+              rating: h.rating ?? preview.rating,
+              originalPrice: h.originalPrice ?? preview.originalPrice,
+              discountPercent: h.discountPercent ?? preview.discountPercent,
+              flashSale: h.flashSale ?? preview.flashSale,
+              stockAvailable: h.stockAvailable ?? preview.stockAvailable,
+              minPrice: h.minPrice ?? preview.minPrice,
+              previewStatus: undefined,
             }
-            return next
           })
-        } catch {
-          if (cancelled) return
-          // Network / API error — mark failed to avoid a retry storm, but
-          // don't nuke the item. User can still click through to the link.
-          setHistory((prev) => {
-            const next = prev.map((h) =>
-              h.id === item.id ? { ...h, previewStatus: 'failed' as const } : h
-            )
-            try {
-              localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
-            } catch {
-              /* ignore */
-            }
-            return next
-          })
-        }
+          saveHistory(next)
+          return next
+        })
       }
     })()
     return () => {
@@ -223,10 +117,7 @@ const ShopeeShortlinkGenerator = () => {
 
   const addToHistory = useCallback((data: SuccessData) => {
     const entry: SavedLink = {
-      id:
-        typeof crypto !== 'undefined' && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`,
+      id: newHistoryId(),
       shortLink: data.shortLink,
       cleanUrl: data.longLink,
       shopId: data.shopId,
@@ -235,22 +126,8 @@ const ShopeeShortlinkGenerator = () => {
       createdAt: Date.now(),
     }
     setHistory((prev) => {
-      // Dedupe by cleanUrl — if the same product was shortened before,
-      // remove the old entry and push the new one to the top (LIFO).
-      // Carry the old productName forward when the new response doesn't
-      // have one (user re-pastes /product/X/Y after originally saving via
-      // the slug URL).
-      const existing = prev.find((h) => h.cleanUrl === entry.cleanUrl)
-      const merged = existing
-        ? { ...entry, productName: entry.productName || existing.productName }
-        : entry
-      const withoutDupe = prev.filter((h) => h.cleanUrl !== entry.cleanUrl)
-      const next = [merged, ...withoutDupe].slice(0, HISTORY_MAX)
-      try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
-      } catch {
-        /* ignore */
-      }
+      const next = sharedAddToHistory(entry, prev)
+      saveHistory(next)
       return next
     })
   }, [])

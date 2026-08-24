@@ -15,6 +15,7 @@ import { ThemeProviders } from './theme-providers'
 import { Metadata } from 'next'
 import { NextIntlClientProvider, hasLocale } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
+import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { routing } from '@/i18n/routing'
 
@@ -89,6 +90,10 @@ export default async function RootLayout({
   const basePath = process.env.BASE_PATH || ''
   const htmlLang = locale === 'vi' ? 'vi-VN' : 'en-US'
 
+  // Middleware sets `x-nf-hide-chrome: 1` on alias rewrites like /sale so
+  // those focused landing URLs render without the site header.
+  const hideChrome = (await headers()).get('x-nf-hide-chrome') === '1'
+
   return (
     <html
       lang={htmlLang}
@@ -129,7 +134,7 @@ export default async function RootLayout({
             <SpeedInsights />
             <SectionContainer>
               <SearchProvider searchConfig={siteMetadata.search as SearchConfig}>
-                <Header />
+                {!hideChrome && <Header />}
                 <main className="mb-auto">{children}</main>
               </SearchProvider>
               <Footer />
