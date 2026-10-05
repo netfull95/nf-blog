@@ -1,0 +1,455 @@
+---
+title: "Trợ lý AI cho Pancake: 10 prompt dùng ngay, và cách tự viết prompt của bạn"
+date: "2026-10-05"
+lastmod: "2026-10-05"
+language: "vi"
+translationKey: "pancake-mcp-no-code-use-cases"
+summary: "Pancake đã có MCP server chính thức tại mcp.pancake.biz — kết nối 1 lần là AI bạn đang dùng (Claude.ai, ChatGPT/Codex, Cursor, Cowork…) đọc được tài liệu Pancake API và lấy dữ liệu thật từ page của bạn. Không cần cài Node, không cần tải code, riêng Claude.ai còn không phải sửa file nào. Bài này cho bạn 10 prompt copy-paste dùng được ngay (báo cáo tuần, danh sách khách VIP, nguồn khách từ ad/post, số liệu live giữa buổi họp), rồi chỉ công thức 5 phần để bạn tự viết prompt cho đúng nhu cầu riêng."
+tags: ["Pancake", "MCP", "AI", "Prompt", "Claude", "ChatGPT", "Không cần code", "Trợ lý ảo", "CSKH", "Báo cáo"]
+---
+
+# Trợ lý AI cho Pancake: 10 prompt dùng ngay, và cách tự viết prompt của bạn
+
+> **TL;DR:** Pancake đã có **MCP server chính thức** chạy sẵn tại `https://mcp.pancake.biz/mcp`. Kết nối 1 lần là **AI bạn đang dùng** — Claude.ai, ChatGPT (Codex), Cursor, Cowork, Claude Desktop, Claude Code hay bất kỳ app nào hỗ trợ MCP — đọc được tài liệu Pancake và **lấy dữ liệu thật** từ page của bạn. **Không cần cài Node.js, không cần tải code về máy.** Riêng **Claude.ai** thì không phải sửa file nào. Bài này: kết nối nhanh → **10 prompt copy-paste dùng ngay** → **công thức tự viết prompt** cho nhu cầu riêng của bạn.
+
+> [!NOTE]
+> Bài này dành cho sản phẩm **Pancake chat đa kênh** — phần mềm quản lý inbox và bình luận Facebook, Zalo, TikTok, Shopee… mà bạn đăng nhập tại **pages.fm**. Đây là sản phẩm chủ lực trong [hệ sinh thái Pancake](/blog/gioi-thieu-pancake).
+
+---
+
+## Vấn đề: muốn biết gì cũng phải đợi
+
+> **Sếp:** "Em ơi, tuần này page trả lời được bao nhiêu tin, có bao nhiêu khách mới?"
+> → Mở Pancake, click 3 chỗ, chờ load, ghép số liệu, screenshot. **12 phút.**
+
+> **Marketing:** "Danh sách khách gắn thẻ 'VIP' tháng này xuất Excel giúp anh."
+> → "Để em nhắn dev." → Dev bận. **2 ngày.**
+
+Pancake không thiếu dữ liệu. Vấn đề là **mỗi lần muốn biết gì đều phải click thủ công hoặc nhờ người khác**.
+
+**Pancake MCP** là tai và mắt để AI đọc được tài liệu Pancake và tự lấy dữ liệu từ tài khoản của bạn. Bạn hỏi bằng tiếng Việt bình thường, AI lo phần kỹ thuật.
+
+Bài này **không hướng dẫn code**. Gồm 3 phần:
+
+1. **Kết nối 1 lần** — hướng dẫn chi tiết cho Claude.ai (dễ nhất), app khác xem tài liệu Pancake
+2. **10 prompt mẫu** — copy-paste là chạy
+3. **Tự viết prompt** — công thức để bạn hỏi được bất cứ gì, không chỉ 10 câu mẫu
+
+---
+
+## Phần 1 — Kết nối (1 lần duy nhất)
+
+### Không cần cài gì nặng
+
+Pancake chạy sẵn MCP server trên mạng. Bạn **không cần** cài Node.js, **không cần** tải source code, **không cần** chạy lệnh build. Chỉ cần trỏ app AI tới địa chỉ:
+
+```
+https://mcp.pancake.biz/mcp
+```
+
+> [!NOTE]
+> Địa chỉ phải **kết thúc bằng `/mcp`**. Thiếu phần này là lỗi phổ biến nhất.
+
+### Chuẩn bị token Pancake
+
+**Không có token** → AI vẫn tra được tài liệu Pancake (31 chức năng, 5 webhook, 11 hướng dẫn). Đủ để hỏi *"Pancake có làm được X không?"*.
+
+**Có token** → AI lấy được **dữ liệu thật** từ page của bạn. Đây là phần hay nhất.
+
+| Loại token | Lấy ở đâu | Dùng cho |
+|---|---|---|
+| **Page access token** (nên có) | Trang → **Cài đặt → Công cụ** | 24 chức năng cấp trang: hội thoại, tin nhắn, thống kê, khách hàng, thẻ… **Không hết hạn** |
+| **User access token** (tuỳ chọn) | Tài khoản → **Cài đặt cá nhân → API Access Token** | 2 chức năng cấp tài khoản: liệt kê các trang bạn quản lý. **Hết hạn tối đa 90 ngày** |
+
+> [!TIP]
+> Dùng lần đầu chỉ cần **Page access token** của 1 page là trải nghiệm hết 10 prompt bên dưới.
+
+---
+
+### Kết nối Claude.ai — không đụng file nào ⭐
+
+Bài này hướng dẫn chi tiết **Claude.ai** vì đây là cách dễ nhất, **không cần rành máy tính** — chỉ bấm nút và điền form. Làm trên web xong thì **Claude Desktop và Claude trên điện thoại cũng tự có**, không phải cài lại.
+
+Đang dùng app AI khác (ChatGPT/Codex, Cursor, Cowork…)? → xem [phần cuối mục này](#dùng-app-ai-khác).
+
+**Bước 1 — Thêm connector**
+
+1. Mở [claude.ai](https://claude.ai) → **Settings → Connectors**
+2. Bấm **Add custom connector**
+3. Điền tên (ví dụ `Pancake API`) và URL `https://mcp.pancake.biz/mcp`
+4. **Authentication**: chọn **Sign in now**
+5. **OAuth client**: chọn **Register automatically**
+6. Bấm **Add**
+
+> [!WARNING]
+> Ở bước 5 **đừng chọn "Use Claude's published identity"** dù nó có nhãn *Recommended*. Chọn nhầm sẽ báo lỗi `Invalid client_id` và phải xoá connector làm lại.
+
+**Bước 2 — Bấm Connect và nhập token**
+
+1. Ở connector vừa thêm, bấm **Connect**
+2. Kiểm tra dòng *"… will be sent back to claude.ai"*. **Nếu tên miền không phải của Claude thì dừng lại, không nhập token.**
+3. Điền form:
+
+| Ô | Ghi chú |
+|---|---|
+| **User access token** | Dán user token. Có thể bỏ trống |
+| **Page access token** | Dán page token. Có thể bỏ trống |
+| **Default page ID** | Tuỳ chọn. Điền thì AI khỏi hỏi "page nào?" mỗi lần |
+| **Read-only** | ✅ **Tích vào** nếu chỉ muốn AI đọc. Khuyên dùng khi mới làm quen |
+
+4. Bấm **Connect** → trình duyệt quay về Claude, connector báo đã kết nối
+
+> [!NOTE]
+> Form phải gửi **trong 15 phút**. Quá giờ thì bấm **Connect** lại từ đầu.
+
+**Bước 3 — Bật trong cuộc trò chuyện**
+
+Mở chat → bấm nút **+** hoặc biểu tượng công cụ → bật **Pancake API**.
+
+> [!TIP]
+> **Tài khoản Team / Enterprise:** chỉ **Owner** mới thêm connector cho cả tổ chức. Owner thêm xong, từng thành viên vào **Settings → Connectors** bấm **Connect** với token riêng.
+
+---
+
+### Dùng app AI khác?
+
+Pancake MCP hoạt động với **mọi app hỗ trợ chuẩn MCP**. Cách kết nối chỉ khác nhau ở chỗ dán cấu hình — nguyên lý giống hệt: trỏ tới `https://mcp.pancake.biz/mcp` và gửi token kèm theo.
+
+| App AI | Kết nối bằng |
+|---|---|
+| **Cowork** | Điền form trong **Settings → MCP Servers → Add Server** |
+| **Claude Desktop / Cursor** | Dán 1 đoạn JSON vào file cấu hình |
+| **Codex (ChatGPT)** | Dán 1 đoạn JSON vào `~/.codex/config.json` |
+| **Claude Code** | Chạy 1 dòng lệnh `claude mcp add` |
+| **App MCP khác** | Trỏ URL + gửi token qua header |
+
+> [!TIP]
+> **Hướng dẫn từng bước cho từng app** có đầy đủ trong [tài liệu chính thức Pancake MCP](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=vi) — kèm đoạn cấu hình copy-paste sẵn và bảng header token. Bài này không chép lại để tránh lỗi thời khi Pancake cập nhật.
+>
+> Nếu bạn là dev và muốn hiểu sâu hơn, xem thêm [bài hướng dẫn kỹ thuật](/blog/pancake-api-mcp-cai-dat-su-dung-claude-cursor).
+
+> [!IMPORTANT]
+> Dù kết nối bằng app nào, **hãy bật Read-only khi mới làm quen**. Nếu không, AI có thể **thật sự gửi tin nhắn cho khách**, gắn/gỡ thẻ, xoá dữ liệu. Khi đã quen và cần AI thao tác thật thì mới tắt.
+
+---
+
+### Kiểm tra đã kết nối chưa
+
+> *"Kiểm tra cấu hình token Pancake giúp tôi."*
+
+AI trả về bảng cho biết token nào đã có — hiển thị dạng `abcd…wxyz`, **không bao giờ hiện đầy đủ**.
+
+---
+
+## Phần 2 — 10 prompt copy-paste dùng ngay
+
+Mỗi prompt có 3 phần:
+
+- 📌 **Khi nào cần** — tình huống thực tế
+- 💬 **Prompt** — copy nguyên văn, chỉ thay `[tên page]`
+- ✨ **Kỳ vọng** — AI trả về gì
+
+> [!TIP]
+> Các prompt này chạy giống nhau trên mọi app AI bạn đã kết nối ở Phần 1.
+
+### Nhóm 1 — Báo cáo nhanh
+
+#### #1. Thống kê tin nhắn và khách mới tuần qua
+
+📌 Thứ 2 họp tuần, sếp hỏi tình hình page.
+
+💬 **Prompt:**
+
+> *"Dùng Pancake MCP, lấy giúp mình thống kê page [tên page] trong 7 ngày qua: số tin nhắn đến, số tin đã trả lời, bao nhiêu khách mới. Trình bày bảng gọn gàng."*
+
+✨ Bảng 3 cột ngay trong chat. Nói thêm *"xuất ra Excel"* → nhận khối dữ liệu dán thẳng vào Google Sheets.
+
+#### #2. Top 5 nhân viên trả lời nhiều nhất
+
+📌 Review KPI cuối tháng, tính thưởng.
+
+💬 **Prompt:**
+
+> *"Top 5 nhân viên trả lời tin nhiều nhất ở page [tên page] trong tháng này, kèm số tin đã xử lý và thời gian phản hồi trung bình. Sắp xếp giảm dần."*
+
+✨ Bảng rank 1–5. Trước đây phải vào từng ngày click **Thống kê → Nhân viên** rồi cộng tay.
+
+### Nhóm 2 — Danh sách khách hàng
+
+#### #3. Xuất danh sách khách VIP ra Excel
+
+📌 Chạy campaign tri ân khách thân thiết, gửi email marketing.
+
+💬 **Prompt:**
+
+> *"Lấy danh sách khách page [tên page] đã được gắn thẻ 'VIP' kèm số điện thoại, email, lần nhắn gần nhất. Format CSV để mình dán vào Google Sheets."*
+
+✨ Khối CSV copy được, dán Google Sheets ra bảng ngay.
+
+#### #4. Khách im lặng cần follow-up
+
+📌 Tìm khách tiềm năng để nhắn warm-up, up-sell.
+
+💬 **Prompt:**
+
+> *"Lấy 20 khách đã nhắn page [tên page] trong 30 ngày qua nhưng chưa mua gì. Sắp xếp theo lần nhắn cuối gần nhất."*
+
+✨ Danh sách để CSKH chủ động nhắn lại.
+
+### Nhóm 3 — Hiểu nguồn khách
+
+#### #5. Khách đến từ bài viết nào nhiều nhất?
+
+📌 Chạy nhiều bài, muốn biết bài nào ra khách để boost thêm.
+
+💬 **Prompt:**
+
+> *"7 ngày qua page [tên page] có bao nhiêu khách nhắn mới? Trong số đó họ đến từ bài viết hoặc quảng cáo nào nhiều nhất? Top 5."*
+
+✨ Bảng bài viết + số khách tương ứng. Quyết định boost dựa trên số thật.
+
+#### #6. Quảng cáo Click-to-Messenger có hiệu quả không?
+
+📌 Đang chạy Facebook ad điểm đến Messenger, cần kiểm tra hiệu quả.
+
+💬 **Prompt:**
+
+> *"Trong 7 ngày qua ở page [tên page]: bao nhiêu tin nhắn đến từ quảng cáo Facebook, bao nhiêu đến tự nhiên? Cho mình tỷ lệ phần trăm."*
+
+✨ Tỷ lệ trả phí vs tự nhiên → biết nên tăng hay giảm ngân sách.
+
+### Nhóm 4 — Quy trình và xử lý sự cố
+
+#### #7. Thiết kế quy trình chống bỏ sót tin
+
+📌 Khách phàn nàn "nhắn 2 tiếng không ai trả lời".
+
+💬 **Prompt:**
+
+> *"Mình muốn: nếu hội thoại ở page [tên page] chưa đọc sau 10 phút trong giờ hành chính thì tự chuyển cho nhân viên khác cùng bộ phận. Pancake có hỗ trợ sẵn không? Nếu có, hướng dẫn mình bấm ở đâu trong giao diện — mình không code được."*
+
+✨ AI đọc tài liệu Pancake, chỉ bạn vào **Cài đặt → Chế độ xoay vòng** click đúng chỗ.
+
+#### #8. "Tại sao tin không về server của mình?"
+
+📌 Team dev báo webhook không nhận tin, bạn cần hiểu để trao đổi lại.
+
+💬 **Prompt:**
+
+> *"Page [tên page] đã bật webhook nhưng server bên dev không nhận được tin nhắn khách. Liệt kê 5 nguyên nhân phổ biến nhất và cách tự kiểm tra từng cái. Trình bày thành checklist mình chuyển cho dev."*
+
+✨ Checklist 5 mục chuyển thẳng cho dev.
+
+### Nhóm 5 — Tra cứu nhanh
+
+#### #9. "Pancake có làm được việc này không?"
+
+📌 Trước khi hứa với sếp một tính năng.
+
+💬 **Prompt:**
+
+> *"Pancake có cho phép lấy ghi âm cuộc gọi tổng đài qua API không? Nếu có thì cần quyền gì? Nếu không thì có cách nào khác không?"*
+
+✨ Trả lời có/không + điều kiện trong vài giây, dựa trên tài liệu thật.
+
+#### #10. Số liệu live giữa buổi họp
+
+📌 Đang họp, sếp hỏi "còn bao nhiêu hội thoại chưa xử lý?".
+
+💬 **Prompt:**
+
+> *"Ngay bây giờ page [tên page] đang có bao nhiêu hội thoại chưa đóng? Trong đó bao nhiêu được gắn thẻ 'Khiếu nại'?"*
+
+✨ AI gọi dữ liệu thật, trả số liệu live.
+
+---
+
+## Phần 3 — Tự viết prompt của riêng bạn
+
+10 prompt trên chỉ là điểm khởi đầu. Nhu cầu của bạn chắc chắn khác — phần này chỉ bạn **công thức** để hỏi được bất cứ gì.
+
+### Công thức 5 phần
+
+Mọi prompt tốt đều có 5 thành phần này:
+
+```
+[1] Dùng Pancake MCP  +  [2] page nào  +  [3] khoảng thời gian  +  [4] cần dữ liệu gì  +  [5] trình bày sao
+```
+
+Thử tách prompt #1 ra xem:
+
+> *"**Dùng Pancake MCP**[1], lấy giúp mình thống kê **page Shop ABC**[2] **trong 7 ngày qua**[3]: **số tin nhắn đến, số tin đã trả lời, bao nhiêu khách mới**[4]. **Trình bày bảng gọn gàng**[5]."*
+
+### Mẫu điền vào chỗ trống
+
+Copy mẫu này, điền 4 chỗ trống là có prompt mới:
+
+> *"Dùng Pancake MCP, ở page **\_\_\_**, trong **\_\_\_**, cho mình **\_\_\_**. Trình bày dạng **\_\_\_**."*
+
+Gợi ý cho từng chỗ trống:
+
+| Chỗ trống | Điền gì được |
+|---|---|
+| **Page nào** | Tên page, hoặc page ID. Bỏ qua nếu đã đặt Default page ID lúc kết nối |
+| **Thời gian** | hôm nay · 7 ngày qua · tháng này · tháng trước · từ 01/09 đến 30/09 · quý này |
+| **Dữ liệu gì** | Xem bảng "AI lấy được gì" ngay dưới |
+| **Trình bày** | bảng · CSV · 3 gạch đầu dòng · tóm tắt 1 đoạn cho sếp · danh sách đánh số |
+
+### AI lấy được những dữ liệu gì?
+
+Đây là "thực đơn" — biết có món gì thì mới gọi món được:
+
+| Nhóm dữ liệu | Hỏi được gì |
+|---|---|
+| **Trang** | Danh sách page bạn quản lý, thông tin từng page |
+| **Hội thoại** | Liệt kê, lọc theo thẻ / trạng thái / thời gian, đếm số lượng |
+| **Tin nhắn** | Đọc nội dung trong hội thoại, gửi tin trả lời *(cần tắt Read-only)* |
+| **Thống kê** | Số tin, thời gian phản hồi, hiệu suất nhân viên, theo thẻ, theo quảng cáo, khách mới |
+| **Khách hàng** | Danh sách khách, thông tin liên hệ, lịch sử tương tác |
+| **Bài viết** | Bài viết của page và bình luận |
+| **Thẻ** | Danh sách thẻ, gắn/gỡ thẻ cho hội thoại *(cần tắt Read-only)* |
+| **Nhân viên** | Danh sách nhân viên trong page |
+| **Cuộc gọi** | Lịch sử cuộc gọi tổng đài |
+| **Xuất dữ liệu** | Xuất dữ liệu hàng loạt |
+
+### Biến 1 prompt thành 10
+
+Lấy prompt #1 (thống kê tuần) làm gốc, thay từng thành phần:
+
+**Đổi thời gian:**
+> *"…trong **hôm nay**…"* · *"…**tháng trước**…"* · *"…**từ 01/09 đến 15/09**…"*
+
+**Đổi dữ liệu cần:**
+> *"…cho mình **thời gian phản hồi trung bình**…"*
+> *"…cho mình **tỷ lệ hội thoại chưa ai trả lời**…"*
+> *"…cho mình **số khách quay lại lần 2**…"*
+
+**Đổi lát cắt:**
+> *"…chia **theo từng nhân viên**…"* · *"…chia **theo thẻ**…"* · *"…chia **theo khung giờ trong ngày**…"*
+
+**Thêm điều kiện lọc:**
+> *"…**chỉ tính hội thoại có gắn thẻ 'Đơn hàng'**…"*
+> *"…**bỏ qua hội thoại do chatbot trả lời**…"*
+
+**Đổi cách trình bày:**
+> *"…**tóm tắt 3 gạch đầu dòng để mình gửi sếp qua Zalo**."*
+> *"…**viết thành đoạn văn ngắn như báo cáo tuần**."*
+
+Chỉ cần đổi 1 thành phần là ra prompt mới. Nhân lên, bạn có hàng chục câu hỏi từ 1 khung gốc.
+
+### Mẹo hay nhất: nhờ chính AI gợi ý prompt
+
+Không biết nên hỏi gì? Hỏi ngược lại AI:
+
+> *"Pancake MCP cho phép truy cập những dữ liệu gì? Mình là **[quản lý CSKH / chủ shop / nhân viên marketing]**. Gợi ý cho mình 5 câu hỏi hữu ích nhất nên hỏi hàng tuần, kèm prompt viết sẵn."*
+
+AI đọc tài liệu Pancake rồi đề xuất prompt **đúng với vai trò của bạn**. Dùng được câu nào thì lưu lại thành bộ prompt riêng.
+
+Mẹo tương tự khi muốn đào sâu một mảng:
+
+> *"Mình muốn theo dõi chất lượng phục vụ khách hàng ở page [tên page]. Những chỉ số nào Pancake có sẵn mà mình nên theo dõi hàng tuần? Viết sẵn prompt cho từng chỉ số."*
+
+### Prompt không ra kết quả thì sửa sao?
+
+| Hiện tượng | Cách sửa |
+|---|---|
+| AI hỏi lại *"page nào?"* | Thêm tên page vào prompt, hoặc đặt **Default page ID** lúc kết nối |
+| AI trả lời chung chung, không có số liệu | Thêm **"Dùng Pancake MCP"** vào đầu câu để AI biết phải gọi công cụ |
+| AI nói *"không có dữ liệu này"* | Hỏi ngược: *"Vậy Pancake có dữ liệu nào gần giống không? Gợi ý cách lấy khác."* |
+| Kết quả quá dài, khó đọc | Thêm *"chỉ lấy top 10"* hoặc *"tóm tắt trong 3 dòng"* |
+| Nghi số liệu sai | *"Cho mình xem dữ liệu thô bạn đã lấy để mình đối chiếu."* |
+| Cần làm lại cho page khác | *"Làm lại y hệt nhưng cho page [tên page khác]."* |
+
+---
+
+## Mẹo dùng hiệu quả và an toàn
+
+### 🟢 Nên
+
+- **Luôn ghi rõ page** — một tài khoản Pancake thường quản lý nhiều page
+- **Bắt đầu bằng "Dùng Pancake MCP…"** để AI gọi công cụ thay vì đoán
+- **Yêu cầu định dạng cụ thể** — *"bảng"*, *"CSV"* → copy-paste được ngay
+- **Cứ thử câu khó** — nếu Pancake chưa có, AI sẽ nói thẳng và gợi ý cách thay thế
+- **Lưu lại prompt hay dùng** vào một file ghi chú — lần sau copy ra dùng tiếp
+
+### 🔴 Không nên
+
+- **Không dán token vào khung chat** — token nằm ở phần cấu hình, AI tự lấy
+- **Không tắt Read-only khi đang học** — tránh AI test rồi gửi nhầm tin cho khách thật
+- **Không hỏi chung chung** kiểu *"Pancake làm gì?"* — hỏi đúng việc bạn cần
+
+### 🛡️ An toàn
+
+Theo tài liệu chính thức của Pancake:
+
+- **Token không lưu trên server MCP.** Dùng header thì token chỉ đi kèm từng lần gọi. Dùng OAuth (Claude.ai) thì token được mã hoá vào phiên kết nối
+- **AI không bao giờ nhìn thấy token** — token đi qua header hoặc OAuth, không nằm trong nội dung chat. Mọi phản hồi và báo lỗi đều che token
+- **Không bật Read-only thì AI ghi được dữ liệu thật** — gửi tin cho khách, gắn/gỡ thẻ, xoá dữ liệu. Đọc kỹ trước khi cho phép
+- **Nghi token bị lộ:** đổi token trong Pancake rồi cập nhật lại cấu hình (hoặc Disconnect → Connect lại trên Claude.ai)
+
+---
+
+## Xử lý sự cố kết nối
+
+| Hiện tượng | Cách xử lý |
+|---|---|
+| AI báo **token not set** | Token chưa được cấu hình. Kiểm tra lại header hoặc form kết nối |
+| Lấy dữ liệu bị báo **401 / 403** | Token sai, hết hạn (user token tối đa 90 ngày), hoặc không có quyền trên page đó |
+| **AI từ chối gửi tin / sửa dữ liệu** | Đang bật Read-only. Tắt Read-only rồi kết nối lại |
+| Claude.ai: *"authorization request is invalid or has expired"* | Form quá 15 phút. Bấm **Connect** lại |
+| Claude.ai: cần kết nối lại / lỗi 401 | Phiên hết hạn (không dùng quá 30 ngày). **Disconnect** rồi **Connect** lại |
+| Claude.ai: **Invalid client_id** | Lúc thêm connector chưa chọn **Register automatically**. Xoá connector và thêm lại |
+| Không thêm được connector, lỗi URL | Kiểm tra URL đúng `https://mcp.pancake.biz/mcp` — có `https://` và **kết thúc bằng `/mcp`** |
+
+**Đổi token / đổi page / bật-tắt Read-only:**
+
+- **Claude.ai:** **Settings → Connectors → Pancake API → Disconnect**, rồi **Connect** lại và điền form mới
+- **App khác:** sửa lại cấu hình với giá trị mới — xem [tài liệu Pancake](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=vi)
+
+---
+
+## Câu hỏi thường gặp
+
+**Q: Có tốn tiền không?**
+A: Pancake MCP **miễn phí**. Các app AI đều có bản miễn phí (giới hạn số tin nhắn). Pancake API nằm sẵn trong gói bạn đang dùng. Chi phí phát sinh = **0đ** nếu dùng vừa phải.
+
+**Q: Không biết code dùng được không?**
+A: Được. Dùng **Claude.ai** hoặc **Cowork** thì hoàn toàn không phải đụng file nào.
+
+**Q: Có phải cài Node.js hay tải code về máy không?**
+A: **Không.** Pancake chạy sẵn server trên mạng, bạn chỉ trỏ app AI tới địa chỉ.
+
+**Q: Mình dùng ChatGPT chứ không dùng Claude?**
+A: Dùng được qua **Codex**. Bất kỳ app nào hỗ trợ chuẩn MCP đều kết nối được — cách cấu hình cho từng app xem [tài liệu chính thức Pancake](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=vi).
+
+**Q: Khác gì hỏi AI bình thường?**
+A: AI bình thường **đoán** theo kiến thức đã học. AI có MCP thì **tra tài liệu Pancake thật và lấy số liệu thật từ page của bạn**.
+
+**Q: Team 5 người dùng chung được không?**
+A: Mỗi người kết nối riêng với token riêng. **Không nên dùng chung 1 token** — để dễ kiểm tra khi có vấn đề.
+
+**Q: Muốn AI tự chạy báo cáo mỗi sáng 8h?**
+A: App chat chỉ chạy khi bạn mở lên hỏi. Muốn tự động theo lịch thì cần dev dựng script riêng.
+
+---
+
+## Tổng kết
+
+**Trước đây:** muốn biết gì cũng = chờ 2 ngày hoặc click thủ công 15 phút.
+
+**Giờ:** muốn biết gì = 1 câu hỏi tiếng Việt, nhận bảng hoặc CSV trong 30 giây.
+
+Quan trọng hơn 10 prompt mẫu là **công thức 5 phần** ở Phần 3. Nắm được công thức, bạn tự viết được prompt cho đúng nhu cầu của mình — và nhờ chính AI gợi ý thêm khi bí.
+
+**Làm ngay:**
+
+1. Chọn [cách kết nối](#phần-1--kết-nối-1-lần-duy-nhất) phù hợp — nhanh nhất là **Claude.ai**, khoảng 3 phút
+2. Copy 1 prompt ở [Phần 2](#phần-2--10-prompt-copy-paste-dùng-ngay) gửi thử
+3. Dùng [công thức 5 phần](#công-thức-5-phần) viết prompt đầu tiên của riêng bạn
+
+### Tham khảo thêm
+
+- [Tài liệu chính thức Pancake MCP](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=vi)
+- [Hướng dẫn kỹ thuật chi tiết cho dev (VI)](/blog/pancake-api-mcp-cai-dat-su-dung-claude-cursor) · [(EN)](/en/blog/pancake-api-mcp-install-guide-claude-cursor)
+- [Giới thiệu hệ sinh thái Pancake](/blog/gioi-thieu-pancake)
+- [Pancake API developer docs](https://developer.pancake.biz/)

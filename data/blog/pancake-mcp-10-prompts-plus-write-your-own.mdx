@@ -1,0 +1,455 @@
+---
+title: "An AI assistant for Pancake: 10 ready-made prompts, plus how to write your own"
+date: "2026-10-06"
+lastmod: "2026-10-06"
+language: "en"
+translationKey: "pancake-mcp-no-code-use-cases"
+summary: "Pancake now runs an official MCP server at mcp.pancake.biz — connect once and whichever AI you already use (Claude.ai, ChatGPT/Codex, Cursor, Cowork…) can read the Pancake docs and pull real data from your page. No Node.js, no cloning a repo, and with Claude.ai you never touch a config file. This post gives you 10 copy-paste prompts that work today (weekly report, VIP customer export, which ad or post drove inbound, live numbers mid-meeting), then teaches the 5-part formula so you can write prompts for whatever you actually need."
+tags: ["Pancake", "MCP", "AI", "Prompt", "Claude", "ChatGPT", "No-code", "Customer support", "Reporting", "Automation"]
+---
+
+# An AI assistant for Pancake: 10 ready-made prompts, plus how to write your own
+
+> **TL;DR:** Pancake now runs an **official MCP server** at `https://mcp.pancake.biz/mcp`. Connect once and **whichever AI you already use** — Claude.ai, ChatGPT (Codex), Cursor, Cowork, Claude Desktop, Claude Code, or anything else that speaks MCP — can read the Pancake docs and **pull real data** from your page. **No Node.js, no repo to clone.** With **Claude.ai** you never open a config file. This post: quick connect → **10 copy-paste prompts** → **a formula for writing your own**.
+
+> [!NOTE]
+> This post is about **Pancake's multi-channel chat product** — the inbox-and-comments manager for Facebook, Zalo, TikTok, Shopee and more, which you log into at **pages.fm**. It's the flagship of the [Pancake ecosystem](/en/blog/introducing-pancake).
+
+---
+
+## The problem: every question means waiting
+
+> **Your manager:** "How many messages did we answer this week? How many new customers?"
+> → Open Pancake, click through three screens, wait for each to load, stitch the numbers together, screenshot. **12 minutes.**
+
+> **Marketing:** "Export this month's 'VIP'-tagged customers to a spreadsheet for me."
+> → "I'll ask a developer." → Developer is busy. **2 days.**
+
+Pancake isn't missing the data. The problem is that **getting any of it means clicking through the UI by hand or asking someone else**.
+
+**Pancake MCP** gives your AI eyes and ears into Pancake: it can read the API documentation and fetch data from your account. You ask in plain English; the AI handles the technical part.
+
+This post involves **no coding**. Three parts:
+
+1. **Connect once** — step-by-step for Claude.ai (the easiest); other apps point to Pancake's docs
+2. **10 ready-made prompts** — copy, paste, done
+3. **Write your own** — a formula so you aren't limited to those 10
+
+---
+
+## Part 1 — Connect (one time only)
+
+### Nothing heavy to install
+
+Pancake hosts the MCP server for you. You **don't** need Node.js, you **don't** download source code, you **don't** run a build. Just point your AI app at:
+
+```
+https://mcp.pancake.biz/mcp
+```
+
+> [!NOTE]
+> The address must **end in `/mcp`**. Leaving that off is the single most common connection error.
+
+### Get a Pancake token
+
+**No token** → the AI can still read the Pancake docs (31 capabilities, 5 webhooks, 11 guides). Enough to answer *"Can Pancake do X?"*.
+
+**With a token** → the AI pulls **real data** from your page. This is the good part.
+
+| Token type | Where to get it | What it unlocks |
+|---|---|---|
+| **Page access token** (get this one) | Page → **Settings → Tools** | 24 page-level capabilities: conversations, messages, statistics, customers, tags… **Never expires** |
+| **User access token** (optional) | Account → **Personal settings → API Access Token** | 2 account-level capabilities: list the pages you manage. **Expires within 90 days** |
+
+> [!TIP]
+> For your first run, a **page access token** for a single page is enough to try every prompt below.
+
+---
+
+### Connecting Claude.ai — no config files ⭐
+
+This post walks through **Claude.ai** in detail because it's the easiest path: **no technical skills needed**, just buttons and a form. Set it up on the web and **Claude Desktop and Claude on your phone inherit it automatically** — nothing else to install.
+
+Using a different AI app (ChatGPT/Codex, Cursor, Cowork…)? → see [the end of this section](#using-a-different-ai-app).
+
+**Step 1 — Add the connector**
+
+1. Open [claude.ai](https://claude.ai) → **Settings → Connectors**
+2. Click **Add custom connector**
+3. Enter a name (e.g. `Pancake API`) and the URL `https://mcp.pancake.biz/mcp`
+4. **Authentication**: choose **Sign in now**
+5. **OAuth client**: choose **Register automatically**
+6. Click **Add**
+
+> [!WARNING]
+> In step 5, **do not pick "Use Claude's published identity"** even though it's labelled *Recommended*. Picking it causes an `Invalid client_id` error and you'll have to delete the connector and start over.
+
+**Step 2 — Click Connect and enter your token**
+
+1. On the connector you just added, click **Connect**
+2. Check the line that reads *"… will be sent back to claude.ai"*. **If that domain isn't Claude's, stop and don't enter your token.**
+3. Fill in the form:
+
+| Field | Notes |
+|---|---|
+| **User access token** | Paste your user token. Can be left blank |
+| **Page access token** | Paste your page token. Can be left blank |
+| **Default page ID** | Optional. Fill it in and the AI stops asking "which page?" every time |
+| **Read-only** | ✅ **Check this** if you only want the AI to read. Recommended while you're learning |
+
+4. Click **Connect** → your browser returns to Claude and the connector shows as connected
+
+> [!NOTE]
+> The form must be submitted **within 15 minutes**. If it times out, click **Connect** again.
+
+**Step 3 — Turn it on in a conversation**
+
+Open a chat → click the **+** button or the tools icon → enable **Pancake API**.
+
+> [!TIP]
+> **Team / Enterprise accounts:** only the **Owner** can add a connector for the whole organisation. Once the Owner has, each member goes to **Settings → Connectors** and clicks **Connect** with their own token.
+
+---
+
+### Using a different AI app?
+
+Pancake MCP works with **any app that speaks MCP**. Only the place you paste the config differs — the principle is identical: point at `https://mcp.pancake.biz/mcp` and send your token along.
+
+| AI app | How you connect |
+|---|---|
+| **Cowork** | Fill in a form under **Settings → MCP Servers → Add Server** |
+| **Claude Desktop / Cursor** | Paste a JSON block into a config file |
+| **Codex (ChatGPT)** | Paste a JSON block into `~/.codex/config.json` |
+| **Claude Code** | Run one `claude mcp add` command |
+| **Any other MCP app** | Point at the URL, send the token as a header |
+
+> [!TIP]
+> **Step-by-step instructions for each app** live in [Pancake's official MCP docs](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=en) — with copy-paste config blocks and the full header reference. This post doesn't duplicate them so it can't go stale when Pancake updates.
+>
+> If you're a developer and want the deeper version, see the [technical walkthrough](/en/blog/pancake-api-mcp-install-guide-claude-cursor).
+
+> [!IMPORTANT]
+> Whichever app you use, **turn on Read-only while you're learning**. Without it the AI can **actually send messages to your customers**, add or remove tags, and delete data. Switch it off only once you're comfortable and genuinely need the AI to act.
+
+---
+
+### Check that it's connected
+
+> *"Check my Pancake token configuration."*
+
+The AI returns a table showing which tokens are set — displayed as `abcd…wxyz`, **never in full**.
+
+---
+
+## Part 2 — 10 copy-paste prompts
+
+Each one has three parts:
+
+- 📌 **When you need it** — the real situation
+- 💬 **Prompt** — copy it verbatim, just swap `[page name]`
+- ✨ **What you get back**
+
+> [!TIP]
+> These prompts behave the same on any AI app you connected in Part 1.
+
+### Group 1 — Quick reporting
+
+#### #1. This week's messages and new customers
+
+📌 Monday standup, your manager asks how the page is doing.
+
+💬 **Prompt:**
+
+> *"Using Pancake MCP, pull statistics for page [page name] over the last 7 days: messages received, messages answered, and how many new customers. Present it as a compact table."*
+
+✨ A three-column table right in the chat. Follow up with *"export that to a spreadsheet"* and you get a block you can paste straight into Google Sheets.
+
+#### #2. Top 5 staff by messages answered
+
+📌 End-of-month performance review or bonus calculation.
+
+💬 **Prompt:**
+
+> *"Top 5 staff by messages answered on page [page name] this month, with their message count and average response time. Sort descending."*
+
+✨ A ranked 1–5 table. Previously you'd open **Statistics → Staff** day by day and add it up by hand.
+
+### Group 2 — Customer lists
+
+#### #3. Export your VIP customers
+
+📌 Running a loyalty campaign or an email blast.
+
+💬 **Prompt:**
+
+> *"Get the customers on page [page name] tagged 'VIP', with phone number, email, and date of last message. Format as CSV so I can paste it into Google Sheets."*
+
+✨ A CSV block that pastes into Sheets as a proper table.
+
+#### #4. Quiet customers worth following up
+
+📌 Finding warm leads to re-engage or upsell.
+
+💬 **Prompt:**
+
+> *"Find 20 customers who messaged page [page name] in the last 30 days but haven't purchased anything. Sort by most recent message first."*
+
+✨ A list your support team can proactively reach out to.
+
+### Group 3 — Understanding where customers come from
+
+#### #5. Which post drove the most inbound?
+
+📌 You're running several posts and want to know which one to put budget behind.
+
+💬 **Prompt:**
+
+> *"Over the last 7 days, how many new customers messaged page [page name]? Which posts or ads did most of them come from? Give me the top 5."*
+
+✨ A table of posts and the inbound each produced — so you boost based on numbers, not guesses.
+
+#### #6. Are the Click-to-Messenger ads working?
+
+📌 You're running Facebook ads with Messenger as the destination and need to check performance.
+
+💬 **Prompt:**
+
+> *"For page [page name] over the last 7 days: how many messages came from Facebook ads versus organic? Give me the percentage split."*
+
+✨ The paid-versus-organic ratio — enough to decide whether to scale budget up or down.
+
+### Group 4 — Process and troubleshooting
+
+#### #7. Design a process so nothing gets missed
+
+📌 A customer complains they waited two hours with no reply.
+
+💬 **Prompt:**
+
+> *"I want this: if a conversation on page [page name] goes unread for 10 minutes during business hours, it should be reassigned to another available agent on the same team. Does Pancake support this out of the box? If so, walk me through where to click in the interface — I can't write code."*
+
+✨ The AI reads Pancake's documentation and points you to **Settings → Auto-assignment**, with the exact clicks.
+
+#### #8. "Why isn't our server receiving messages?"
+
+📌 Your dev team says the webhook isn't firing and you need to discuss it with them.
+
+💬 **Prompt:**
+
+> *"Page [page name] has webhooks enabled but our dev team's server isn't receiving customer messages. List the 5 most common causes and how to check each one. Format it as a checklist I can hand to the developer."*
+
+✨ A five-item checklist you can forward as-is.
+
+### Group 5 — Quick lookups
+
+#### #9. "Can Pancake even do this?"
+
+📌 Before you promise a feature to your manager.
+
+💬 **Prompt:**
+
+> *"Can I retrieve call-centre recordings through the Pancake API? If so, what permissions do I need? If not, is there another way to get them?"*
+
+✨ A yes/no with conditions in seconds, grounded in the actual documentation.
+
+#### #10. Live numbers mid-meeting
+
+📌 You're in a meeting and someone asks how many conversations are still open.
+
+💬 **Prompt:**
+
+> *"Right now, how many open conversations does page [page name] have? How many of those are tagged 'Complaint'?"*
+
+✨ The AI queries live data and gives you the number — no screenshotting Pancake.
+
+---
+
+## Part 3 — Writing your own prompts
+
+Those 10 are a starting point. Your needs are different — here's the **formula** so you can ask for anything.
+
+### The 5-part formula
+
+Every good prompt has these five pieces:
+
+```
+[1] Use Pancake MCP  +  [2] which page  +  [3] time range  +  [4] what data  +  [5] how to present it
+```
+
+Take prompt #1 apart and you can see them:
+
+> *"**Using Pancake MCP**[1], pull statistics for **page Acme Shop**[2] **over the last 7 days**[3]: **messages received, messages answered, and how many new customers**[4]. **Present it as a compact table**[5]."*
+
+### Fill-in-the-blank template
+
+Copy this, fill the four blanks, and you have a new prompt:
+
+> *"Using Pancake MCP, for page **\_\_\_**, over **\_\_\_**, give me **\_\_\_**. Present it as **\_\_\_**."*
+
+What goes in each blank:
+
+| Blank | Options |
+|---|---|
+| **Which page** | Page name or page ID. Skip it if you set a Default page ID when connecting |
+| **Time range** | today · the last 7 days · this month · last month · Sept 1–30 · this quarter |
+| **What data** | See the "what you can ask for" table below |
+| **How to present** | a table · CSV · 3 bullet points · a one-paragraph summary for my manager · a numbered list |
+
+### What you can ask for
+
+Think of this as the menu — you can only order what's on it:
+
+| Data group | What you can ask about |
+|---|---|
+| **Pages** | The pages you manage, and details about each |
+| **Conversations** | List, filter by tag / status / date, count them |
+| **Messages** | Read message contents, send replies *(requires Read-only off)* |
+| **Statistics** | Message volume, response times, staff performance, breakdowns by tag or by ad, new customers |
+| **Customers** | Customer lists, contact details, interaction history |
+| **Posts** | Your page's posts and their comments |
+| **Tags** | List tags, add or remove them on conversations *(requires Read-only off)* |
+| **Staff** | The people assigned to a page |
+| **Call logs** | Call-centre history |
+| **Export** | Bulk data exports |
+
+### Turn one prompt into ten
+
+Take prompt #1 as the base and swap one piece at a time:
+
+**Change the time range:**
+> *"…for **today**…"* · *"…**last month**…"* · *"…**from Sept 1 to Sept 15**…"*
+
+**Change the data:**
+> *"…give me **average response time**…"*
+> *"…give me **the share of conversations nobody replied to**…"*
+> *"…give me **how many customers came back a second time**…"*
+
+**Change the breakdown:**
+> *"…broken down **by staff member**…"* · *"…**by tag**…"* · *"…**by hour of day**…"*
+
+**Add a filter:**
+> *"…**counting only conversations tagged 'Order'**…"*
+> *"…**excluding conversations handled by the chatbot**…"*
+
+**Change the output:**
+> *"…**summarise in 3 bullets so I can send it to my manager on Slack**."*
+> *"…**write it as a short paragraph for the weekly report**."*
+
+Change one piece and you have a new prompt. Multiply them out and one template gives you dozens of questions.
+
+### The best trick: ask the AI to suggest prompts
+
+Not sure what to ask? Ask the other way around:
+
+> *"What data does Pancake MCP give you access to? I'm a **[support manager / shop owner / marketer]**. Suggest the 5 most useful questions I should be asking weekly, and write the prompts for me."*
+
+The AI reads the Pancake documentation and proposes prompts **tailored to your role**. Keep the ones that work and you've built your own prompt library.
+
+The same trick when you want to go deeper on one area:
+
+> *"I want to track customer service quality on page [page name]. Which metrics does Pancake already have that I should be watching weekly? Write a prompt for each one."*
+
+### When a prompt doesn't work
+
+| Symptom | Fix |
+|---|---|
+| The AI asks *"which page?"* | Add the page name, or set a **Default page ID** when connecting |
+| You get a vague answer with no numbers | Add **"Using Pancake MCP"** at the start so the AI knows to call the tool |
+| The AI says *"that data isn't available"* | Turn it around: *"Then what similar data does Pancake have? Suggest another approach."* |
+| The result is too long to read | Add *"only the top 10"* or *"summarise in 3 lines"* |
+| You suspect the numbers are wrong | *"Show me the raw data you pulled so I can check it."* |
+| You need the same thing for another page | *"Do exactly that again, but for page [other page name]."* |
+
+---
+
+## Getting the most out of it, safely
+
+### 🟢 Do
+
+- **Always name the page** — one Pancake account usually manages several
+- **Start with "Using Pancake MCP…"** so the AI calls the tool instead of guessing
+- **Ask for a specific format** — *"a table"*, *"CSV"* → directly copy-pasteable
+- **Try the hard questions** — if Pancake can't do it, the AI will say so and suggest an alternative
+- **Save the prompts you reuse** in a notes file so you can grab them next time
+
+### 🔴 Don't
+
+- **Don't paste your token into the chat** — it belongs in the connection settings, where the AI picks it up automatically
+- **Don't turn off Read-only while learning** — otherwise a test run can send a real message to real customers
+- **Don't ask vague questions** like *"what does Pancake do?"* — ask for the specific thing you need
+
+### 🛡️ Safety
+
+Per Pancake's official documentation:
+
+- **Tokens are not stored on the MCP server.** With headers, the token travels with each individual request. With OAuth (Claude.ai), it's encrypted into the connection session
+- **The AI never sees your token** — it travels via header or OAuth, never through the chat. Every response and error message redacts it
+- **Without Read-only, the AI can write real data** — send customer messages, add or remove tags, delete records. Read carefully before approving an action
+- **If you suspect a token leaked:** rotate it in Pancake, then update your configuration (or Disconnect → Connect again on Claude.ai)
+
+---
+
+## Connection troubleshooting
+
+| Symptom | What to do |
+|---|---|
+| The AI reports **token not set** | No token configured. Re-check the header or the connection form |
+| Data requests return **401 / 403** | Wrong token, expired token (user tokens last 90 days max), or no permission on that page |
+| **The AI refuses to send messages or edit data** | Read-only is on. Turn it off and reconnect |
+| Claude.ai: *"authorization request is invalid or has expired"* | The form sat for more than 15 minutes. Click **Connect** again |
+| Claude.ai: needs reconnecting / 401 error | Session expired (unused for over 30 days). **Disconnect**, then **Connect** again |
+| Claude.ai: **Invalid client_id** | You didn't choose **Register automatically** when adding the connector. Delete it and add it again |
+| Can't add the connector, URL error | Confirm the URL is exactly `https://mcp.pancake.biz/mcp` — with `https://` and **ending in `/mcp`** |
+
+**To change a token, switch pages, or toggle Read-only:**
+
+- **Claude.ai:** **Settings → Connectors → Pancake API → Disconnect**, then **Connect** again with the new values
+- **Other apps:** update your configuration — see [Pancake's docs](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=en)
+
+---
+
+## FAQ
+
+**Q: Does this cost anything?**
+A: Pancake MCP is **free**. Every AI app has a free tier (with message limits). The Pancake API is already part of your plan. Additional cost: **nothing**, for normal usage.
+
+**Q: Can I use this without knowing how to code?**
+A: Yes. With **Claude.ai** or **Cowork** you never open a file — just buttons and a form.
+
+**Q: Do I need Node.js or a downloaded repo?**
+A: **No.** Pancake hosts the server; you only point your AI app at the address.
+
+**Q: I use ChatGPT, not Claude.**
+A: Works via **Codex**. Any MCP-capable app connects — per-app setup is in [Pancake's official docs](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=en).
+
+**Q: How is this different from just asking an AI?**
+A: A plain AI **guesses** from what it was trained on. An AI with MCP **reads the actual Pancake documentation and pulls real numbers from your page**.
+
+**Q: Can five of us share one setup?**
+A: Each person connects separately with their own token. **Don't share a single token** — separate ones make it far easier to audit if something goes wrong.
+
+**Q: Can the AI run a report automatically every morning at 8?**
+A: Chat apps only run when you open them and ask. Scheduled automation needs a developer to build a small script.
+
+---
+
+## Wrapping up
+
+**Before:** any question meant a two-day wait or fifteen minutes of clicking.
+
+**Now:** any question is one sentence of plain English, and you get a table or CSV in thirty seconds.
+
+More valuable than the 10 sample prompts is the **5-part formula** in Part 3. Once you have it, you can write prompts for whatever you actually need — and ask the AI to suggest more when you're stuck.
+
+**Do this now:**
+
+1. Pick your [connection method](#part-1--connect-one-time-only) — Claude.ai is fastest, about 3 minutes
+2. Copy one prompt from [Part 2](#part-2--10-copy-paste-prompts) and send it
+3. Use the [5-part formula](#the-5-part-formula) to write your first prompt
+
+### Further reading
+
+- [Pancake's official MCP documentation](https://docs.pancake.biz/pancake/st-f12/st-p3?lang=en)
+- [Technical walkthrough for developers (EN)](/en/blog/pancake-api-mcp-install-guide-claude-cursor) · [(VI)](/blog/pancake-api-mcp-cai-dat-su-dung-claude-cursor)
+- [Introducing the Pancake ecosystem](/en/blog/introducing-pancake)
+- [Pancake API developer docs](https://developer.pancake.biz/)

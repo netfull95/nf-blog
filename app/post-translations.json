@@ -1,5 +1,9 @@
 {
   "byKey": {
+    "pancake-mcp-no-code-use-cases": {
+      "en": "pancake-mcp-10-prompts-plus-write-your-own",
+      "vi": "pancake-mcp-10-viec-ai-lam-ho-khong-can-code"
+    },
     "pancake-api-mcp-guide": {
       "en": "pancake-api-mcp-install-guide-claude-cursor",
       "vi": "pancake-api-mcp-cai-dat-su-dung-claude-cursor"
@@ -48,6 +52,8 @@
     }
   },
   "bySlug": {
+    "pancake-mcp-10-prompts-plus-write-your-own": "pancake-mcp-no-code-use-cases",
+    "pancake-mcp-10-viec-ai-lam-ho-khong-can-code": "pancake-mcp-no-code-use-cases",
     "pancake-api-mcp-install-guide-claude-cursor": "pancake-api-mcp-guide",
     "pancake-api-mcp-cai-dat-su-dung-claude-cursor": "pancake-api-mcp-guide",
     "pancake-webhook-idempotency-chong-trung-su-kien": "pancake-webhook-idempotency",
