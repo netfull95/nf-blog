@@ -1,0 +1,527 @@
+---
+title: "AI tự động trả lời ngoài giờ làm việc với Botcake — Cài đúng để AI không phá hội thoại"
+date: "2026-10-24"
+lastmod: "2026-10-30"
+language: "vi"
+translationKey: "botcake-auto-reply-after-hours"
+summary: "Shop đóng cửa 17h nhưng khách nhắn lúc 22h — bỏ qua thì mất đơn, để AI chạy suốt thì sáng hôm sau nhân viên và AI cùng trả lời một khách. Bài này hướng dẫn 3 phương án tăng dần: Away Message của Meta, Botcake AI trực đêm, và Botcake tích hợp POS/CRM kèm thông báo ra ngoài. Có ảnh chụp từng màn hình cho 2 cài đặt hay sai nhất: Skip BotcakeAI trong Giờ làm việc, và Tạm dừng Botcake AI khi nhân viên trả lời."
+tags: ["Botcake", "Pancake", "AI chatbot", "Tự động hóa", "CSKH", "Ngoài giờ", "Auto-reply", "Make.com"]
+---
+
+# AI tự động trả lời ngoài giờ làm việc với Botcake — Cài đúng để AI không phá hội thoại
+
+> **TL;DR:** Khách nhắn lúc 22h, nhân viên đã về — **để trống là mất đơn, AI chạy suốt là nhân viên sáng hôm sau mất quyền kiểm soát**. Bài này hướng dẫn **3 phương án** từ đơn giản đến nâng cao: (A) **Tin mặc định** — không cần Botcake, 5 phút cài xong; (B) **Botcake AI theo lịch** — AI thật sự tư vấn được, tự tắt đúng giờ; (C) **Botcake + Make.com** — AI phân loại ý định và chuyển việc cho nhân viên. Phần quan trọng nhất: **cài đúng "AI dừng khi nhân viên nhắn"** để tránh lỗi AI vẫn chạy đè lên nhân viên.
+
+---
+
+## Vấn đề: khách không chờ đến giờ hành chính
+
+> *"Page bên mình không làm việc sau 17H, 8h sáng hôm sau mới làm lại. Có phương án nào auto rep lại khách từ sau 5h chiều đến 8h sáng không?"*
+
+Câu hỏi này xuất hiện gần như mỗi tuần trong support. Không phải vì Pancake thiếu tính năng — mà vì có **nhiều cách làm** và mỗi cách phù hợp một kiểu shop khác nhau.
+
+Hai hệ quả xấu hay xảy ra khi cài không đúng:
+
+1. **AI chạy suốt 24/7** → sáng hôm sau nhân viên nhắn, AI tiếp tục chen vào → khách nhận 2 tin nhắn chồng nhau, hội thoại loạn
+2. **Chỉ bật Tin mặc định** → AI xác nhận "sẽ liên hệ lại" nhưng không hỏi được tên, SĐT → sáng ra nhân viên không biết nhắn ai trước
+
+Bài này hướng dẫn từng cách theo thứ tự phức tạp tăng dần — bạn chọn cách phù hợp với quy mô shop.
+
+---
+
+## Chọn phương án phù hợp
+
+| | **A — Tin mặc định** | **B — Botcake AI theo lịch** | **C — Botcake + Make.com** |
+|---|---|---|---|
+| **Cần Botcake?** | Không | Có | Có |
+| **Thời gian cài** | 5 phút | 30 phút | 2–4 giờ |
+| **AI tư vấn được không?** | Không | Có | Có (nâng cao) |
+| **Thu thập SĐT/tên?** | Không tự động | Có thể | Có |
+| **Tự tạo đơn / lead?** | Không | Không | Có (POS / CRM) |
+| **Phù hợp với** | Shop mới, chưa dùng Botcake | Hầu hết shop | Shop cần phân loại & chuyển việc |
+
+---
+
+## Phương án A — Away Message của Meta Business Suite (không cần Botcake)
+
+Đây là tính năng miễn phí của **Meta Business Suite**, không liên quan đến Pancake. Dùng khi bạn chỉ muốn **báo khách biết giờ làm việc** và chưa cần AI tư vấn gì thêm.
+
+### Cài đặt
+
+1. Vào **Meta Business Suite (business.facebook.com) → Inbox → Tin nhắn tự động**
+2. Chọn **Tin nhắn vắng mặt → Chỉnh sửa**
+3. Bật **Trạng thái** và chọn **Theo lịch**
+4. Điền giờ làm việc (ví dụ 8:00–17:00) — ngoài khung giờ này tin tự động sẽ kích hoạt
+5. Soạn nội dung tin — xem mẫu bên dưới
+
+**Mẫu tin ngoài giờ:**
+
+```
+Cảm ơn bạn đã nhắn tin cho [Tên shop]! 🙏
+
+Shop đang nghỉ — giờ làm việc: 8:00–17:00 từ Thứ 2 đến Thứ 7.
+
+Bạn để lại số điện thoại, mình sẽ gọi lại ngay khi vào làm nhé!
+```
+
+> [!TIP]
+> Thêm câu *"Bạn để lại số điện thoại"* vào tin. Sáng hôm sau nhân viên lọc hội thoại chưa đọc trong Pancake, thấy ngay ai để số để gọi lại trước.
+
+> [!NOTE]
+> Away Message của Meta **không hỏi thêm**, không tư vấn được sản phẩm — chỉ phát 1 tin rồi im. Nếu bạn muốn AI thật sự hỏi tên, SĐT, và tư vấn sơ bộ thì cần Phương án B.
+
+---
+
+## Phương án B — Botcake AI theo lịch
+
+Đây là cách được dùng nhiều nhất. AI Botcake **chỉ hoạt động trong khung giờ ngoài ca** — tự bật lúc 17h, tự tắt lúc 8h sáng.
+
+### Bước 1 — Tạo AI Agent
+
+Đăng nhập **Botcake**, cột trái mục **NÂNG CAO → Botcake AI** (giao diện tiếng Anh: **ADVANCE → Botcake AI**).
+
+> [!IMPORTANT]
+> **Agent gắn với từng page.** Chọn đúng page ở góc trên bên trái **trước khi** tạo Agent — không có bước gán page cho Agent về sau. Shop nhiều page thì mỗi page phải tạo Agent riêng, kể cả khi nội dung giống hệt nhau.
+
+![Màn hình Botcake AI: menu NÂNG CAO bên trái, danh sách Agent và nút Tạo Agent mới](/static/images/blog/botcake/botcake-ai-danh-sach-agent.png)
+
+Màn hình này có 5 mục trong cột **CATEGORY** — bạn sẽ dùng 3 mục đầu:
+
+| Mục | Dùng để làm gì |
+|---|---|
+| **Danh sách Agent** | Tạo và quản lý Agent. Mỗi Agent dùng được cho nhiều tính năng |
+| **Thông tin** | Thông tin chung về shop — AI dùng chung cho mọi Agent |
+| **Nguồn kiến thức** | Nơi để bảng giá, mô tả sản phẩm, chính sách đổi trả |
+| **Thống kê** | Xem AI đã xử lý bao nhiêu hội thoại, tiêu tốn bao nhiêu |
+| **Cài đặt chung** | Cấu hình áp dụng cho toàn bộ Agent của page |
+
+Bấm **+ Tạo Agent mới** (góc phải), đặt tên dễ nhận — ví dụ *AI Ngoài Giờ*.
+
+> [!NOTE]
+> Agent đầu tiên bạn tạo sẽ nằm ở mục **AGENT MẶC ĐỊNH** — đây là Agent được dùng khi không có cấu hình nào khác chỉ định. Các Agent tạo sau nằm ở **TẤT CẢ AGENT** và cần được gán vào tính năng cụ thể mới chạy.
+
+### Bước 2 — Viết hướng dẫn cho AI
+
+Bấm vào Agent vừa tạo. Màn hình chi tiết có **4 tab**:
+
+| Tab (VI / EN) | Nội dung |
+|---|---|
+| **Instruction** | Hướng dẫn cho AI — phần quan trọng nhất, viết ở bước này |
+| **Công cụ** / *Tools* | Bật tích hợp Pancake POS, CRM để AI tạo đơn, ghi lead |
+| **Kiến thức** / *Knowledge* | Chọn tài liệu Agent này được phép dùng |
+| **Phản hồi của AI** / *AI response behavior* | Tinh chỉnh cách AI trả lời |
+
+Góc phải trên có **dropdown chọn model** (GPT-4.1 mini, …). Model mạnh hơn trả lời tốt hơn nhưng tốn credit hơn — với kịch bản ngoài giờ, model nhẹ thường là đủ.
+
+> [!TIP]
+> Bên phải màn hình có khung **Preview** kèm nút **Click here to test your AI** — chat thử ngay trong Botcake, không cần ra page nhắn thật. Dùng khung này để test prompt trước khi bật live.
+
+Trong tab **Instruction**, phần **Tạo hướng dẫn của bạn** là nơi viết prompt.
+
+#### Cấu trúc 3 phần Botcake dùng
+
+Prompt mẫu của Botcake theo một khung cố định — bám theo khung này AI tuân thủ tốt hơn nhiều so với viết tự do:
+
+```
+1: Ngữ cảnh:
+   - Đóng vai trò là [Tên AI] - nhân viên chăm sóc khách hàng của [Tên shop]
+   - Nhắn tin với thái độ nhẹ nhàng, thân thiện và sử dụng emoji để tăng tính tự nhiên
+   - Xưng hô với khách bằng em, gọi khách hàng là anh/chị
+   - Shop đang ngoài giờ làm việc. Giờ làm việc: 8:00–17:00, Thứ 2 đến Thứ 7
+
+2: Mục tiêu:
+   - Tư vấn sơ bộ để khách không phải chờ đến sáng
+   - Thu thập đủ thông tin sau để nhân viên gọi lại vào sáng mai:
+     + Tên
+     + Số điện thoại
+     + Sản phẩm/dịch vụ khách quan tâm
+
+3. Quy trình chăm sóc khách hàng:
+   Chú ý: Tuyệt đối tuân thủ theo từng bước sau
+   - Bước 1: Chào khách và báo đang ngoài giờ
+     + Chào khách hàng
+     + Báo shop đang ngoài giờ làm việc, nhân viên sẽ liên hệ lại vào 8:00 sáng mai
+     + (Không được hỏi khách cần hỗ trợ gì mà phải chủ động hỏi khách quan tâm sản phẩm nào)
+   - Bước 2: Tư vấn dựa trên Kiến thức
+     + Bắt buộc lấy thông tin sản phẩm từ Kiến thức, không được tự bịa
+     + Nếu không có thông tin trong Kiến thức, nói "để nhân viên xác nhận lại với anh/chị vào sáng mai"
+   - Bước 3: Thu thập thông tin
+     + Xin tên và số điện thoại để nhân viên gọi lại
+     + Xác nhận lại thông tin đã nhận với khách
+     + Cảm ơn và chốt lại thời điểm nhân viên sẽ liên hệ
+```
+
+Vì sao khung này hiệu quả:
+
+| Phần | Tác dụng |
+|---|---|
+| **Ngữ cảnh** | Cố định giọng điệu và cách xưng hô — tránh AI lúc "mình" lúc "em" |
+| **Mục tiêu** | Liệt kê **đúng** thông tin cần lấy để AI biết khi nào xong việc |
+| **Quy trình** | Ép AI theo thứ tự. Câu *"Tuyệt đối tuân thủ theo từng bước sau"* là chốt chặn quan trọng |
+
+> [!TIP]
+> Ba kỹ thuật đáng chép lại từ prompt mẫu của Botcake:
+>
+> 1. **Chỉ thị phủ định trong ngoặc** — *"(Không được hỏi khách cần hỗ trợ gì mà phải…)"*. AI hay mở đầu bằng câu hỏi rỗng; viết thẳng điều **không** được làm hiệu quả hơn mô tả điều nên làm.
+> 2. **Mô tả chi tiết thứ cần thu thập** — prompt gốc viết *"Địa chỉ nhận hàng (Phải bao gồm số nhà, tên đường hoặc thôn, xóm, xã phường, quận huyện, thành phố)"*. Không ghi rõ thì AI nhận "Hà Nội" là xong.
+> 3. **Bắt buộc gọi nguồn dữ liệu** — *"Bắt buộc phải gọi sang hệ thống quản lý sản phẩm lấy về thông tin…"*. Có từ "bắt buộc" thì AI mới chịu tra, không thì nó đoán.
+
+> [!NOTE]
+> Nút **Cải thiện AI** ở góc phải sẽ nhờ chính AI viết lại prompt của bạn cho rõ ràng hơn. Viết nháp theo khung 3 phần rồi bấm nút này — nhanh hơn ngồi gọt câu chữ. Nhớ đọc lại kết quả vì nó có thể bỏ mất ràng buộc bạn cố ý đặt.
+
+> [!TIP]
+> Card **Thông tin doanh nghiệp** ngay trên ô prompt là nơi khai tên shop, địa chỉ, giờ làm việc dùng chung. Điền ở đó rồi thì trong prompt chỉ cần nhắc *"theo thông tin doanh nghiệp"*, không phải chép lại từng Agent.
+
+### Bước 3 — Đưa thông tin sản phẩm vào Nguồn kiến thức
+
+Đây là điểm nhiều shop làm sai: nhồi toàn bộ bảng giá vào System Prompt. Prompt dài làm AI phản hồi chậm hơn, tốn credit hơn, và mỗi lần đổi giá phải sửa prompt của từng Agent.
+
+Kiến thức nằm ở **hai tầng**:
+
+| Tầng | Đường dẫn | Vai trò |
+|---|---|---|
+| **Thư viện chung** | Botcake AI → **Nguồn kiến thức** | Kho tài liệu của page. Thêm, sửa, xoá ở đây |
+| **Của từng Agent** | Agent → tab **Kiến thức** | **Chọn** tài liệu nào Agent này được dùng |
+
+Tài liệu phải có trong thư viện chung trước, rồi mới chọn vào từng Agent. Cùng một bảng giá có thể dùng cho nhiều Agent khác nhau.
+
+Nội dung nên đưa vào:
+
+- Bảng giá sản phẩm / gói cước
+- Mô tả, thông số từng sản phẩm
+- Chính sách đổi trả, bảo hành, phí ship
+- Câu hỏi thường gặp của khách
+
+Mở Agent → tab **Kiến thức** → **Add files** để chọn tài liệu:
+
+![Tab Kiến thức của Agent với 2 file Excel đã chọn: bảng giá gói cước và danh sách bán hàng](/static/images/blog/botcake/botcake-agent-knowledge.png)
+
+Mỗi file hiện dung lượng và ngày upload. Rê chuột vào có icon **xem trước** và **xoá**.
+
+**Lợi ích:** đổi giá chỉ sửa một file trong thư viện, mọi Agent đang dùng file đó tự cập nhật — không phải mở từng Agent sửa prompt.
+
+> [!TIP]
+> **File và URL được xử lý khác nhau:**
+>
+> - **File tải lên** (Excel, PDF…) được lưu vào knowledge base — AI đọc bản đã lưu. Đổi nội dung phải tải file mới lên
+> - **Nguồn URL** được AI tra **trực tiếp trên website mỗi lần trả lời** (dùng model Botcake AI GPT-5-nano), nên thông tin luôn mới nhất
+>
+> Bảng giá hay đổi thì để dạng **URL trỏ về trang giá trên web** thay vì file Excel — khỏi lo quên cập nhật.
+
+> [!TIP]
+> Mục **Thông tin** (trong cột CATEGORY) dùng cho các thông tin cố định của shop: tên, địa chỉ, giờ làm việc, hotline. Điền sẵn ở đây thì không cần lặp lại trong prompt của từng Agent.
+
+### Bước 4 — Cho AI chạy ngoài giờ làm việc
+
+Đây là chỗ **dễ hiểu ngược nhất** trong cả bài, nên đọc kỹ.
+
+Botcake **không có lịch riêng cho AI**. Nó có **một khung giờ làm việc chung** cho toàn bộ page, rồi bạn chọn **tính năng nào được phép chạy tiếp khi hết giờ**.
+
+Vào **Cấu hình → Giờ làm việc** (giao diện tiếng Anh: **Settings → Operating hours**):
+
+![Màn hình Operating hours trong Botcake: Working hours và 4 công tắc Actions outside working hours](/static/images/blog/botcake/botcake-operating-hours.png)
+
+Màn hình chia 2 phần:
+
+**1. Working hours — khai giờ làm việc THẬT của shop**
+
+- **Operating time**: bật lên thì khung giờ mới có hiệu lực
+- **Time setting**: mặc định là **08:00 – 23:00 hằng ngày**. Chọn **Custom** để sửa đúng giờ shop bạn (ví dụ 08:00 – 17:00)
+
+> [!WARNING]
+> Mặc định 08:00–23:00 khiến nhiều shop tưởng mình đã cài xong. Nếu shop bạn đóng cửa lúc 17h mà vẫn để mặc định, thì từ 17h đến 23h hệ thống vẫn coi là **trong giờ làm việc** — AI không chạy, khách không nhận được gì. Nhớ bấm **Custom**.
+
+**2. Actions outside working hours — cái gì vẫn chạy khi hết giờ**
+
+Bốn công tắc, bật cái nào thì cái đó **tiếp tục hoạt động ngoài giờ**:
+
+| Công tắc | Bật lên nghĩa là |
+|---|---|
+| **Skip Welcome messages** | Tin chào mừng vẫn gửi ngoài giờ |
+| **Skip Default messages** | Tin mặc định vẫn gửi ngoài giờ |
+| **Skip Keywords** | Kịch bản theo từ khoá vẫn chạy ngoài giờ |
+| **Skip BotcakeAI** | **AI vẫn tư vấn ngoài giờ** ← cái bạn cần |
+
+> [!IMPORTANT]
+> Chữ **"Skip"** ở đây nghĩa là *bỏ qua giới hạn giờ làm việc*, **không phải** *tắt tính năng*. Bật `Skip BotcakeAI` = AI **được miễn** khung giờ = AI chạy cả ngoài giờ. Rất nhiều người hiểu ngược rồi tắt đi, xong thắc mắc sao AI im.
+
+### Hai cách để AI chạy ngoài giờ
+
+| Cách | Thao tác | Khi nào dùng |
+|---|---|---|
+| **A. Tắt khung giờ** | Tắt **Operating time** | Muốn AI và mọi tự động hoá chạy 24/7, không phân biệt trong/ngoài giờ |
+| **B. Miễn trừ riêng AI** | Bật **Operating time** + bật **Skip BotcakeAI** | Muốn khung giờ vẫn áp cho các tính năng khác, chỉ riêng AI được chạy xuyên đêm |
+
+**Cách B là lựa chọn đúng cho kịch bản ngoài giờ** — bạn giữ được khung giờ làm việc cho Welcome/Default/Keywords, còn AI thì phủ phần đêm.
+
+> [!TIP]
+> Muốn khách **chỉ** nhận tin từ AI ngoài giờ, đừng bật thêm `Skip Welcome messages` và `Skip Default messages`. Bật cả ba thì một khách nhắn lúc 22h có thể nhận liên tiếp: tin chào mừng → tin mặc định → AI trả lời. Ba tin cho một câu hỏi.
+
+> [!NOTE]
+> Khung giờ này của **Botcake**, độc lập với Away Message của **Meta Business Suite**. Nếu bật cả hai, khách nhận 2 tin từ 2 hệ thống. Chọn một.
+
+### Khi AI và tin mặc định cùng đủ điều kiện
+
+Công tắc ở góc phải màn hình **Botcake AI** — **Ưu tiên tin nhắn mặc định ↔ Ưu tiên AI** — quyết định ai được gửi khi cả hai cùng khớp:
+
+| Vị trí công tắc | Kết quả |
+|---|---|
+| **Ưu tiên tin nhắn mặc định** | Tin mặc định gửi trước, AI chỉ chạy khi không có tin mặc định nào khớp |
+| **Ưu tiên AI** | AI xử lý trước, tin mặc định chỉ dùng khi AI không hoạt động |
+
+Chọn **Ưu tiên AI** — vì bạn muốn AI tư vấn và lấy SĐT, không phải một tin tự động cứng.
+
+Phân biệt hai thứ dễ nhầm: `Skip BotcakeAI` trả lời câu hỏi *"AI có được chạy ngoài giờ không?"*, còn công tắc ưu tiên trả lời *"khi cả AI lẫn tin mặc định cùng chạy được thì chọn cái nào?"*.
+
+### Bước 5 — Cài AI dừng khi nhân viên nhắn (QUAN TRỌNG NHẤT)
+
+Đây là bước **hay bị bỏ qua nhất** và gây ra lỗi phổ biến nhất: sáng hôm sau nhân viên vào trả lời khách, nhưng AI vẫn chen vào gửi thêm tin.
+
+Đây là **cấu hình chung của page**, không nằm trong từng Agent.
+
+Vào **Cấu hình → Hội thoại Pancake**, kéo xuống mục **Khi nhân viên trả lời trên Pancake**:
+
+| Nhóm | Công tắc | Nên đặt |
+|---|---|---|
+| **VỚI BOTCAKE** | `Tạm dừng Bot` | Bật nếu bạn có dùng kịch bản Bot (luồng tin nhắn) |
+| **VỚI BOTCAKE AI** | `Tạm dừng Botcake AI` | **Bật** |
+| | `Thời lượng tạm dừng` | Mặc định **24 giờ** |
+
+> [!IMPORTANT]
+> **Bot và Botcake AI là hai công tắc riêng.** Shop dùng cả kịch bản Bot lẫn AI mà chỉ bật một cái thì cái còn lại vẫn chen vào khi nhân viên đang trả lời.
+
+**Chọn thời lượng bao lâu?**
+
+| Thời lượng | Hệ quả |
+|---|---|
+| **24 giờ** (mặc định) | Nhân viên trả lời buổi sáng → hội thoại đó thuộc về người cả ngày. An toàn nhất, nhưng tối hôm đó AI cũng không đỡ nữa |
+| **8–12 giờ** | Phủ hết một ca làm việc, đến đêm AI nhận lại hội thoại. Hợp với shop muốn AI trực đêm liên tục |
+
+Nếu mục tiêu chính là *AI trực đêm*, chọn **8–12 giờ**. Nếu ưu tiên *không bao giờ để AI chen vào việc của nhân viên*, giữ **24 giờ**.
+
+> [!IMPORTANT]
+> Nếu không bật công tắc này:
+> - Nhân viên nhắn cho khách lúc 8h30
+> - AI vẫn đang hoạt động trên hội thoại đó
+> - AI gửi thêm 1 tin → khách nhận 2 tin từ 2 nguồn → mất tin tưởng
+
+### Tạm dừng AI cho một hội thoại cụ thể
+
+Ngoài cài đặt tự động ở trên, bạn **dừng tay** được cho từng hội thoại. Trong màn hình chat Pancake, bấm icon Botcake trên thanh công cụ của hội thoại:
+
+![Popover Botcake trong hội thoại Pancake với hai dòng Bot và AI, mỗi dòng có nút tạm dừng](/static/images/blog/botcake/botcake-pause-ai-conversation.png)
+
+Popover hiện trạng thái **Bot** và **AI** riêng biệt, mỗi cái một nút tạm dừng. Dùng khi:
+
+- Khách đang bức xúc, cần người thật xử lý ngay
+- AI đang trả lời sai, muốn cắt ngang trước khi nó nói thêm
+- Hội thoại đặc biệt mà bạn muốn giữ hoàn toàn cho nhân viên
+
+Icon mũi tên cạnh chữ **Botcake** mở thẳng sang Botcake nếu cần chỉnh sâu hơn.
+
+**Kiểm tra lại sau khi cài — 2 mức:**
+
+**Mức 1 — Test nội dung ngay trong Botcake.** Mở Agent, dùng khung **Preview** bên phải, bấm **Click here to test your AI**. Chat thử vài câu khách hay hỏi để xem AI có bám Kiến thức không, có xin SĐT không. Mức này không kiểm tra được lịch và quy tắc dừng.
+
+![Khung Preview bên phải màn hình Agent với nút Click here to test your AI](/static/images/blog/botcake/botcake-agent-preview.png)
+
+**Mức 2 — Test thật trên page, nhưng chỉ mình thấy.** Trước khi mở cho khách, vào **Cấu hình → Cấu hình chung → Customize Bot → Receive replies** và chọn **`AI replies to admins only`**.
+
+![Màn hình Cấu hình chung của Botcake: Timezone GMT+7 và tuỳ chọn Receive replies](/static/images/blog/botcake/botcake-general-settings.png)
+
+Ở chế độ này AI **chỉ trả lời admin của page** — khách thật nhắn vào sẽ không nhận phản hồi từ AI. Bạn nhắn thử từ tài khoản admin lúc ngoài giờ để kiểm tra lịch và nội dung mà không sợ khách ăn phải bản chưa chuẩn.
+
+Ba tuỳ chọn ở mục này:
+
+| Tuỳ chọn | Ai được Bot/AI trả lời |
+|---|---|
+| `Bot replies to everyone` | Tất cả khách — chế độ chạy thật |
+| `Bot replies to admins only` | Chỉ admin, áp cho kịch bản Bot |
+| `AI replies to admins only` | Chỉ admin, áp cho AI — **dùng khi test** |
+
+**Mức 3 — Mở cho khách.** Đổi lại `Bot replies to everyone`. Nhắn từ tài khoản khác (không phải admin) vào page lúc ngoài giờ → kiểm tra AI có trả lời không → sáng hôm sau nhân viên nhắn vào hội thoại đó → AI **không được** gửi thêm. Chỉ mức này mới xác nhận được `Skip BotcakeAI` và `Tạm dừng Botcake AI` chạy đúng.
+
+---
+
+## Phương án C — Botcake tích hợp CRM/POS + thông báo ra ngoài
+
+Botcake có tích hợp **trực tiếp** với Pancake POS và CRM — không cần Make.com cho phần này. Make.com chỉ cần khi muốn kết nối thêm dịch vụ **ngoài hệ sinh thái Pancake** như Zalo OA, Slack, Google Sheets.
+
+### Bật tích hợp POS / CRM trong Agent
+
+Mở Agent → tab **Công cụ** (*Tools*). Mục **BUILT-IN** có sẵn hai tích hợp, bật cái nào tuỳ việc bạn muốn AI làm:
+
+![Tab Tools của Agent với hai tích hợp built-in Pancake POS và Pancake CRM](/static/images/blog/botcake/botcake-agent-tools.png)
+
+| Tích hợp | AI làm được gì | Hợp với |
+|---|---|---|
+| **Pancake POS** — *Automation create order* | Tạo đơn hàng tự động | Khách đã chốt mua, chỉ cần lên đơn |
+| **Pancake CRM** — *CRM Lead Automation* | Tạo lead tự động | Khách mới quan tâm, cần nhân viên gọi lại |
+
+**Với kịch bản ngoài giờ, Pancake CRM thường đúng hơn.** Khách nhắn lúc 22h phần lớn đang tìm hiểu chứ chưa chốt — ghi thành lead để sáng hôm sau nhân viên gọi lại hợp lý hơn là để AI lên đơn ngay trong đêm. Shop bán sản phẩm đơn giản, giá rõ ràng thì mới nên bật thêm POS.
+
+Sau khi bật, **bổ sung ràng buộc vào prompt** ở phần *Quy trình* — nếu không AI sẽ tạo đơn/lead khi còn thiếu thông tin:
+
+```
+- Bước 4: Chỉ tạo đơn/lead khi đã có ĐỦ các thông tin sau
+   + Tên
+   + Số điện thoại
+   + Sản phẩm khách quan tâm
+   + Địa chỉ nhận hàng (nếu tạo đơn)
+  Trước khi tạo, đọc lại toàn bộ thông tin cho khách xác nhận.
+  Nếu khách chưa xác nhận, không được tạo.
+```
+
+> [!TIP]
+> Mục **TOOLS** bên dưới (nút **Add new**) dành cho tool tự định nghĩa — gọi API riêng của shop, tra tồn kho hệ thống ngoài… Phần này cần dev, không bắt buộc cho kịch bản ngoài giờ.
+
+### Luồng đầy đủ khi kết hợp Make.com
+
+Dùng thêm Make.com khi cần **báo cho nhân viên qua kênh ngoài** (Zalo OA, email, Slack):
+
+```
+Khách nhắn ngoài giờ
+    → Botcake AI tư vấn + thu thập thông tin
+    → [Trực tiếp] Tạo đơn trong Pancake POS hoặc lead trong CRM
+    → Pancake webhook đẩy sự kiện hội thoại ra ngoài
+    → Make.com gửi thông báo cho nhân viên qua Zalo OA / email
+```
+
+### Dùng webhook của Pancake, không phải của Botcake
+
+Phần đẩy dữ liệu ra ngoài dùng **webhook của Pancake** — cấu hình bên Pancake chứ không nằm trong Botcake. Botcake AI lo phần hội thoại; Pancake lo phần bắn sự kiện.
+
+Tóm tắt các bước (chi tiết đầy đủ trong [bài hướng dẫn Webhook & API Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan#2-c%E1%BA%A5u-h%C3%ACnh-webhook--nh%E1%BA%ADn-s%E1%BB%B1-ki%E1%BB%87n-realtime-t%E1%BB%AB-pancake)):
+
+1. **Liên hệ Support Pancake để mở tính năng webhook** — không bật được từ giao diện, và chỉ user có quyền admin mới dùng được
+2. Vào mục **Webhook/API** trong Pancake, dán **Webhook URL** mà Make.com cấp
+3. Server nhận webhook phải dùng **HTTPS** và trả về **200 trong vài giây** — xử lý lâu thì nhận xong trả 200 ngay, việc nặng đẩy xuống background
+
+Payload Pancake gửi về có sẵn các trường bạn cần cho kịch bản thông báo:
+
+| Trường | Dùng để |
+|---|---|
+| `page_id` | Biết tin đến từ page nào (shop nhiều page) |
+| `conversation_id` | Dựng link mở thẳng hội thoại cho nhân viên |
+| `customer` | Tên và ID khách |
+| `message` | Nội dung khách nhắn |
+
+> [!TIP]
+> Chưa có server cũng test được: lấy URL tạm ở [webhook.site](https://webhook.site), dán vào Pancake, nhắn thử một tin vào page rồi xem payload thật trông thế nào trước khi dựng kịch bản Make.com.
+
+### Cài kịch bản thông báo trong Make.com
+
+```
+[Webhook] Nhận sự kiện từ Pancake
+    → [Filter] Chỉ lấy tin ngoài giờ làm việc
+    → [Zalo OA / Email / Slack] Báo nhân viên phụ trách
+        kèm tên khách, nội dung, link hội thoại
+```
+
+> [!NOTE]
+> Số điện thoại khách do **AI thu thập trong hội thoại**, không nằm sẵn trong payload webhook. Muốn có SĐT trong thông báo thì để AI ghi vào CRM/POS (tích hợp trực tiếp ở trên), rồi Make.com đọc ngược lại — hoặc chấp nhận thông báo chỉ có link hội thoại để nhân viên bấm vào xem.
+
+> [!NOTE]
+> Phương án C cần nhân viên biết Make.com cơ bản hoặc có dev hỗ trợ. Nếu chỉ cần AI tạo đơn + ghi CRM, dùng tích hợp trực tiếp — không cần Make.com.
+
+---
+
+## Lỗi thường gặp và cách xử lý
+
+### AI không rep dù đã bật
+
+| Nguyên nhân | Kiểm tra |
+|---|---|
+| Hội thoại đang được gắn nhân viên phụ trách | Bỏ phân công → AI mới hoạt động lại |
+| Đang trong thời lượng tạm dừng sau khi nhân viên trả lời | Mở hội thoại → bấm icon Botcake → bật lại **AI** |
+| Chưa bật **Skip BotcakeAI** | Vào **Cấu hình → Giờ làm việc**, bật công tắc `Skip BotcakeAI` |
+| Working hours vẫn để mặc định 08:00–23:00 | Bấm **Custom**, sửa đúng giờ đóng cửa thật của shop |
+| Khung giờ lệch múi giờ | **Cấu hình → Cấu hình chung → Timezone** phải là `(GMT +7:00) Bangkok, Hanoi, Jakarta` |
+| Tạo Agent nhầm page | Agent thuộc về page đang chọn. Kiểm tra lại page ở góc trên bên trái rồi vào **Botcake AI → Danh sách Agent** xem Agent có ở đó không |
+| Đang để `AI replies to admins only` | Đổi về `Bot replies to everyone` trong **Cấu hình → Cấu hình chung** |
+
+### AI không dừng khi nhân viên nhắn
+
+| Nguyên nhân | Cách sửa |
+|---|---|
+| Chưa bật `Tạm dừng Botcake AI` | Bật trong **Cấu hình → Hội thoại Pancake → Khi nhân viên trả lời trên Pancake** |
+| Chỉ bật `Tạm dừng Bot`, quên `Tạm dừng Botcake AI` | Hai công tắc riêng — bật cả hai nếu dùng cả Bot lẫn AI |
+| Nhân viên nhắn từ thiết bị di động nhưng Pancake chưa ghi nhận | Đợi tin đồng bộ (thường < 30 giây), hoặc F5 lại |
+| `Thời lượng tạm dừng` quá ngắn | Tăng lên 8–24 giờ để phủ hết ca làm việc |
+
+### AI báo sai thông tin sản phẩm
+
+| Nguyên nhân | Cách sửa |
+|---|---|
+| Nguồn kiến thức thiếu thông tin sản phẩm | Bổ sung bảng giá, chính sách vào **Botcake AI → Nguồn kiến thức** |
+| AI đoán tên sản phẩm từ tên quảng cáo | Thêm rule vào prompt: *"Chỉ tư vấn sản phẩm có trong Nguồn kiến thức. Không đặt tên sản phẩm theo tên quảng cáo"* |
+| Sản phẩm mới chưa cập nhật | Cập nhật Nguồn kiến thức sau mỗi lần thêm sản phẩm mới |
+| Prompt không ràng buộc AI bám nguồn | Thêm: *"Nếu không có thông tin trong Nguồn kiến thức, nói để nhân viên xác nhận lại"* |
+
+> [!TIP]
+> Sau khi cập nhật Nguồn kiến thức, **mở hội thoại test mới** thay vì nhắn tiếp vào hội thoại cũ — AI giữ context trong cùng một cuộc trò chuyện nên vẫn trả lời theo thông tin cũ.
+
+---
+
+## Checklist cài đặt
+
+Trước khi bật live, đánh dấu hết các mục này:
+
+- [ ] Chọn đúng phương án phù hợp quy mô shop (A / B / C)
+- [ ] **Nếu dùng Phương án A:** Tin mặc định đã có câu xin SĐT
+- [ ] **Nếu dùng Phương án B hoặc C:**
+  - [ ] Đã điền **Thông tin** shop (tên, giờ làm việc, hotline)
+  - [ ] **Nguồn kiến thức** có bảng giá và chính sách cập nhật mới nhất
+  - [ ] Agent → tab **Kiến thức** đã chọn đúng tài liệu cần dùng
+  - [ ] Đã test bằng khung **Preview** trước khi bật live
+  - [ ] Đã test trên page với `AI replies to admins only`, rồi mới đổi về `Bot replies to everyone`
+  - [ ] System prompt có ràng buộc *"chỉ trả lời dựa trên Nguồn kiến thức"*
+  - [ ] **Working hours** đã bấm **Custom** đúng giờ shop (không để mặc định 08:00–23:00)
+  - [ ] Đã bật **Skip BotcakeAI** trong *Actions outside working hours*
+  - [ ] Không bật thừa `Skip Welcome messages` / `Skip Default messages` (tránh khách nhận 3 tin)
+  - [ ] **Cấu hình → Cấu hình chung → Timezone** là GMT+7 (Bangkok, Hanoi, Jakarta)
+  - [ ] Công tắc đầu trang để **Ưu tiên AI** (nếu muốn AI chạy thay tin mặc định)
+  - [ ] **Cấu hình → Hội thoại Pancake**: đã bật `Tạm dừng Botcake AI` + chọn thời lượng
+  - [ ] Nếu dùng cả kịch bản Bot: bật thêm `Tạm dừng Bot`
+  - [ ] Không bật đồng thời Away Message (Meta) và Botcake AI cùng lúc
+- [ ] Đã test: nhắn ngoài giờ → AI trả lời
+- [ ] Đã test: nhân viên nhắn vào hội thoại → AI không chen vào
+
+---
+
+## Câu hỏi thường gặp
+
+**Q: Phương án nào không cần mua Botcake?**
+A: **Phương án A** dùng Away Message của Meta Business Suite — miễn phí, không cần Botcake, không cần Pancake thêm gói. Nhưng chỉ gửi 1 tin cố định, không tư vấn được.
+
+**Q: AI có thể chạy ngoài giờ lẫn trong giờ không?**
+A: Được — nhưng thường không nên. Trong giờ làm việc, nhân viên cần kiểm soát hội thoại. AI chạy song song dễ gây nhân viên và AI cùng trả lời 1 khách. Cài theo lịch rõ ràng sẽ tốt hơn.
+
+**Q: Khách nhắn ngoài giờ, AI đã thu thập SĐT — sáng ra nhân viên xử lý thế nào?**
+A: Lọc hội thoại theo **"AI đã hoàn thành"** hoặc **"Chưa đọc"** trong Pancake. Ưu tiên hội thoại có SĐT và intent rõ ràng. Nếu dùng Phương án C, nhân viên nhận thông báo Zalo lúc sáng sớm trước ca.
+
+**Q: AI đang chạy ngoài giờ, có thể tắt khẩn cấp không?**
+A: Có, hai mức. **Một hội thoại:** bấm icon Botcake trong hội thoại đó rồi tạm dừng **AI**. **Toàn bộ page:** vào **Cấu hình → Giờ làm việc** tắt `Skip BotcakeAI`, hoặc tắt hẳn Agent trong **Botcake AI → Danh sách Agent**.
+
+**Q: Dùng Botcake AI có tốn thêm tiền không?**
+A: Botcake có **gói miễn phí 500.000 tin nhắn** — xem mức đã dùng ở góc dưới bên trái, mục **USAGE → Free message**. Với shop vừa và nhỏ, chạy AI ngoài giờ thường không chạm trần này.
+
+Model chọn ở dropdown góc phải Agent (GPT-4.1 mini, …) quyết định tốc độ tiêu thụ. Model nhẹ đủ cho kịch bản ngoài giờ — chào hỏi, tra bảng giá, xin SĐT. Theo dõi mức dùng ở **Botcake AI → Thống kê**.
+
+---
+
+## Tổng kết
+
+Không có công thức "một cài cho tất cả" — chọn đúng phương án quan trọng hơn cài thật phức tạp:
+
+- **Shop mới, chưa dùng Botcake:** Phương án A, 5 phút là xong
+- **Shop có volume trung bình, muốn AI tư vấn được:** Phương án B — bước quan trọng nhất là cài **AI dừng khi nhân viên nhắn**
+- **Shop cần phân loại và tự động hóa sau hội thoại:** Phương án C với Make.com
+
+Dù chọn phương án nào, **điều tối thiểu cần làm** là khách biết shop đang ngoài giờ và biết cách để lại thông tin. Đừng để khách nhắn vào ban đêm và sáng ra không thấy ai trả lời — không phải vì bỏ qua, mà vì không biết mình đã nhắn.
+
+### Tham khảo thêm
+
+- [Giới thiệu hệ sinh thái Pancake — Botcake là sản phẩm nào?](/blog/gioi-thieu-pancake)
+- [Hướng dẫn Webhook & API gửi tin nhắn Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan)
+- [Pancake MCP — 10 việc AI làm hộ không cần code](/blog/pancake-mcp-10-viec-ai-lam-ho-khong-can-code)
