@@ -59,6 +59,15 @@ export async function generateMetadata(props: {
     }
   })
 
+  // Self-referencing canonical. Must be set explicitly: providing an
+  // `alternates` object here overrides the root layout's `canonical: './'`,
+  // so without this the post ships no canonical tag at all and Google picks
+  // its own — which it did, flagging "Duplicate, Google chose different
+  // canonical than user" in Search Console.
+  const localePrefix =
+    params.locale === routing.defaultLocale ? '' : `/${params.locale}`
+  const canonical = `${siteMetadata.siteUrl}${localePrefix}/blog/${post.slug}`
+
   // hreflang alternates for the post — only emit a language entry if a
   // translation actually exists at that locale.
   const tKey = translationMap.bySlug[post.slug]
@@ -92,7 +101,10 @@ export async function generateMetadata(props: {
       images: ogImages,
       authors: authors.length > 0 ? authors : [siteMetadata.author],
     },
-    alternates: Object.keys(languages).length > 0 ? { languages } : undefined,
+    alternates: {
+      canonical,
+      ...(Object.keys(languages).length > 0 ? { languages } : {}),
+    },
     twitter: {
       card: 'summary_large_image',
       title: post.title,
