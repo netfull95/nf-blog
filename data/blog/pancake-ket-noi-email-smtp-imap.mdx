@@ -1,0 +1,182 @@
+---
+title: "Pancake vừa thêm kênh Email — cài SMTP/IMAP để không phải mở Outlook riêng nữa"
+date: "2026-11-03"
+lastmod: "2026-11-03"
+language: "vi"
+translationKey: "pancake-email-smtp-imap-setup"
+summary: "Pancake vừa ra beta kênh Email — nhân viên trả lời email khách trong cùng giao diện với Messenger và Zalo, không cần chuyển sang Outlook hay Gmail. Bài này hướng dẫn cài trong 10 phút: Outlook/Microsoft 365 chỉ cần 3 click, email domain riêng thì cần thêm bước lấy App Password. Kèm bảng thông số SMTP/IMAP sẵn cho Google Workspace và hosting cPanel."
+tags: ["Pancake", "Email", "SMTP", "IMAP", "Đa kênh", "CSKH", "Tính năng mới"]
+---
+
+# Pancake vừa thêm kênh Email — cài SMTP/IMAP để không phải mở Outlook riêng nữa
+
+> **TL;DR:** Pancake vừa ra beta tính năng **kênh Email** — email khách gửi vào hiển thị như một hội thoại bình thường, nhân viên trả lời ngay trong Pancake mà không cần mở Outlook hay Gmail riêng. Bài này hướng dẫn cài: **Outlook/Microsoft 365** thì 3 click là xong; **Gmail cá nhân, Google Workspace, và email domain riêng** (hosting cPanel/Plesk) thì cần thêm App Password và thông số SMTP/IMAP.
+
+---
+
+Đây là tình huống quen thuộc: khách nhắn Messenger thì nhân viên thấy ngay trên Pancake, nhưng khách gửi email thì phải tự nhớ vào Outlook kiểm tra — inbox chia hai, hay bỏ sót.
+
+Pancake vừa giải bài toán này bằng cách thêm **kênh Email** vào hệ thống đa kênh. Tính năng đang ở **beta** và hỗ trợ: Outlook/Microsoft 365 qua OAuth, Gmail cá nhân và Google Workspace qua IMAP/SMTP + App Password, và email domain riêng trên hosting.
+
+---
+
+## Email trong Pancake trông như thế nào
+
+Khi khách gửi email vào, Pancake hiển thị như một hội thoại tin nhắn bình thường — **bong bóng trắng** cho tin khách gửi, **bong bóng xanh** cho tin nhân viên trả lời. Chỉ khác ở phần đầu thread: có tên subject, tên người gửi, và nút chỉnh CC/BCC.
+
+![Email hiển thị trong Pancake — danh sách hội thoại email bên trái, nội dung email đầy đủ ở giữa, panel thông tin khách và tạo đơn bên phải](/static/images/blog/pancake-email/pancake-email-conversation-view.png)
+
+Khi nhân viên nhấn trả lời, cửa sổ soạn email mở toàn màn hình với đủ công cụ: in đậm, in nghiêng, chèn link, bảng, ảnh, chữ ký, template.
+
+Email cùng một chuỗi (reply-to nhau) sẽ **gộp vào một hội thoại** tự động — không bị tạo ra mỗi tin một conversation riêng như một số tool khác hay gặp.
+
+> [!NOTE]
+> Tính năng đang **beta**. Hiện hỗ trợ: Outlook/Microsoft 365 (OAuth), Gmail cá nhân và Google Workspace (IMAP/SMTP + App Password), email domain riêng trên hosting.
+
+---
+
+## Bạn cần loại nào — chọn nhanh trong 30 giây
+
+| Email của bạn | Cách kết nối | Thời gian |
+|---|---|---|
+| `@outlook.com`, `@hotmail.com`, `@live.com` | Kết nối Outlook (OAuth) | ~2 phút |
+| Email công ty dùng Microsoft 365 — `@congty.vn` nhưng đăng nhập qua Microsoft | Kết nối Outlook (OAuth) | ~2 phút |
+| Email domain riêng dùng Google Workspace — `@congty.vn` nhưng đăng nhập qua Google | IMAP/SMTP + App Password | ~10 phút |
+| Email domain riêng dùng hosting (cPanel, Plesk, DirectAdmin) | IMAP/SMTP | ~10 phút |
+| Gmail cá nhân (`@gmail.com`) | IMAP/SMTP + App Password | ~10 phút |
+
+---
+
+## Vào cài đặt
+
+Từ giao diện Pancake, bấm **Dashboard → Kết nối** (hoặc **Connect**), tìm **Email** trong danh sách kênh bên trái.
+
+![Popup Add a connection — chọn Email [Beta] trong danh sách kênh bên trái, 2 nút Connect Outlook và Connect with IMAP/SMTP](https://statics.pancake.vn/pancake-docs/2026/10/31/b882acbf4e7bf247_image.png)
+
+---
+
+## Cách 1 — Outlook / Microsoft 365
+
+Nếu email của bạn thuộc Outlook hoặc Microsoft 365, đây là cách nhanh nhất:
+
+1. Bấm **Kết nối Outlook**
+2. Cửa sổ đăng nhập Microsoft mở ra — chọn tài khoản hoặc nhập email/mật khẩu
+3. Bấm đồng ý cho Pancake quyền truy cập hộp thư — Pancake cần 3 quyền: đọc mail, gửi mail thay bạn, và đọc hồ sơ cơ bản
+4. Xong — không cần nhập server hay port gì cả
+
+![Màn hình Microsoft xin quyền cho Pancake — đọc mail, gửi mail, xem profile](https://statics.pancake.vn/pancake-docs/2026/10/31/96287f6fddee6477_image.png)
+
+> [!WARNING]
+> Đừng nhập email Outlook vào form IMAP/SMTP — Microsoft đã tắt "Basic Authentication", sẽ báo lỗi ngay. Phải dùng đúng nút **Kết nối Outlook**.
+
+---
+
+## Cách 2 — Email domain riêng qua IMAP/SMTP
+
+Với email domain riêng (Google Workspace hoặc hosting), bạn cần điền thông số kết nối thủ công.
+
+### Bước 1 — Lấy thông số IMAP/SMTP
+
+Tham khảo bảng dưới. Nếu hosting của bạn không có trong danh sách, tìm từ khoá `"tên hosting + IMAP SMTP settings"` — nhà cung cấp nào cũng có trang hướng dẫn.
+
+| Nhà cung cấp | IMAP Host | IMAP Port | SMTP Host | SMTP Port |
+|---|---|---|---|---|
+| **Gmail cá nhân** | `imap.gmail.com` | 993 (SSL) | `smtp.gmail.com` | 465 (SSL) |
+| **Google Workspace** | `imap.gmail.com` | 993 (SSL) | `smtp.gmail.com` | 465 (SSL) |
+| **cPanel hosting** | `mail.domain.com` | 993 (SSL) | `mail.domain.com` | 587 (TLS) |
+| **Zoho Mail** | `imap.zoho.com` | 993 (SSL) | `smtp.zoho.com` | 587 (TLS) |
+| **Fastmail** | `imap.fastmail.com` | 993 (SSL) | `smtp.fastmail.com` | 587 (TLS) |
+
+> [!TIP]
+> Nếu bạn dùng hosting cPanel, thay `domain.com` bằng domain thật của bạn — ví dụ `mail.shopxyz.vn`. Có thể đăng nhập vào cPanel → **Email Accounts** để xem đúng thông số.
+
+### Bước 2 — Tạo App Password (Gmail cá nhân và Google Workspace)
+
+Google không cho phép đăng nhập bằng mật khẩu tài khoản thông thường qua IMAP — áp dụng cho cả `@gmail.com` lẫn Google Workspace. Bạn cần tạo **App Password** riêng:
+
+1. Vào **myaccount.google.com → Bảo mật**
+2. Bật **Xác minh 2 bước** nếu chưa bật (bắt buộc phải có trước khi tới bước tiếp theo)
+3. Tìm mục **App passwords** (nằm trong phần *How you sign in to Google*)
+4. Nhập tên tuỳ ý vào ô **App name** — ví dụ `Pancake` — rồi bấm **Create**
+5. Google tạo mật khẩu 16 ký tự — chép lại ngay, chỉ hiện 1 lần
+
+![Tạo App Password trong Google Account — ô App name và nút Create](/static/images/blog/pancake-email/google-app-password-screen.png)
+
+> [!NOTE]
+> Mật khẩu 16 ký tự này dùng thay cho mật khẩu Google thật khi điền vào Pancake. Mật khẩu Google thật **sẽ bị từ chối** — đây là điểm hay nhầm nhất.
+
+> [!WARNING]
+> Nếu vào trang App passwords mà thấy lỗi **"The setting you are looking for is not available for your account"**:
+>
+> ![Lỗi App passwords không khả dụng — Google báo setting not available](/static/images/blog/pancake-email/google-app-password-unavailable.png)
+>
+> Nguyên nhân là **chưa bật Xác minh 2 bước (2FA)**. Quay lại **Bảo mật → Xác minh 2 bước**, bật lên rồi quay lại mục App passwords — lúc này mới hiện form tạo mật khẩu.
+
+Nếu dùng hosting cPanel, mật khẩu điền là mật khẩu email bình thường — không cần bước tạo App Password.
+
+### Bước 3 — Điền form trong Pancake
+
+Quay lại màn hình kết nối Email trong Pancake, điền vào form IMAP/SMTP:
+
+![Form điền thông số IMAP/SMTP trong Pancake — các ô IMAP host, port, SMTP host, port, username, password](https://statics.pancake.vn/pancake-docs/2026/10/5/5c2f2f45-d5a0-4e2a-9f71-2f0bf45633bd_Screenshot%202026-10-05%20at%2014.44.44.png)
+
+| Ô | Điền gì |
+|---|---|
+| **Email address** | Địa chỉ email đầy đủ — `cskh@shopxyz.vn` |
+| **Password/App Password** | App Password (Gmail/Google Workspace) hoặc mật khẩu email (hosting) |
+| **IMAP host** | Server IMAP (xem bảng ở Bước 1) |
+| **IMAP Port** | 993 |
+| **SMTP host** | Server SMTP (xem bảng ở Bước 1) |
+| **SMTP Port** | 465 (Gmail/Google Workspace) · 587 (hosting) |
+
+> [!TIP]
+> Nếu dùng Gmail cá nhân hoặc Google Workspace, điền đúng theo placeholder gợi ý trên form: IMAP host `imap.gmail.com` port `993`, SMTP host `smtp.gmail.com` port `465`.
+>
+> ![Form IMAP/SMTP với placeholder Gmail — imap.gmail.com port 993, smtp.gmail.com port 465](/static/images/blog/pancake-email/pancake-imap-smtp-form-gmail.png)
+
+Bấm **Kết nối** — Pancake sẽ test kết nối và báo thành công hoặc lỗi ngay.
+
+---
+
+## 2 lỗi hay gặp
+
+**"Basic authentication is disabled"**
+
+Bạn đang nhập email Outlook/Microsoft 365 vào form IMAP/SMTP. Thoát ra, dùng nút **Kết nối Outlook** thay thế.
+
+**"Authentication failed" hoặc "Invalid credentials" với Google Workspace**
+
+Bạn đang nhập mật khẩu Google thật vào ô Password. Cần tạo App Password theo Bước 2 ở trên rồi điền mật khẩu 16 ký tự đó.
+
+> [!TIP]
+> Còn lỗi khác? Kiểm tra lại tên IMAP Host và SMTP Host — copy-paste từ bảng thông số, đừng gõ tay để tránh sai một ký tự.
+
+---
+
+## Sau khi kết nối
+
+Email mới gửi vào sẽ về Pancake tự động. Email cũ trong hộp thư **không được kéo ngược về** — chỉ tính từ thời điểm kết nối trở đi.
+
+Nhân viên thấy email trong danh sách hội thoại như bình thường, có thể gắn thẻ, phân công, và lọc theo kênh Email như các kênh khác.
+
+> [!NOTE]
+> Tính năng đang beta — nếu gặp vấn đề, liên hệ support Pancake và báo rõ đang dùng loại email nào (Google Workspace / hosting / Outlook). Team đang tiếp tục cải thiện trong các tuần tới.
+
+---
+
+## Checklist cài đặt
+
+- [ ] Xác định loại email: Outlook → dùng **Kết nối Outlook**; domain riêng → dùng **IMAP/SMTP**
+- [ ] **Nếu dùng Google Workspace:** đã bật Xác minh 2 bước và tạo App Password
+- [ ] Điền đúng IMAP Host / SMTP Host / Port từ bảng thông số nhà cung cấp
+- [ ] Username là địa chỉ email đầy đủ, không phải chỉ phần trước `@`
+- [ ] Nhấn Kết nối → chờ Pancake test và báo thành công
+- [ ] Gửi thử 1 email vào địa chỉ vừa kết nối → kiểm tra email hiện trong Pancake
+
+---
+
+### Xem thêm
+
+- [Hệ sinh thái Pancake — 7 sản phẩm và cách phối hợp](/blog/gioi-thieu-pancake)
+- [Pancake MCP — 10 prompt dùng ngay không cần code](/blog/pancake-mcp-10-viec-ai-lam-ho-khong-can-code)
+- [Tài liệu chính thức Pancake](https://docs.pancake.biz/pancake/st-f1/st-p6/st-s19?lang=vi)
