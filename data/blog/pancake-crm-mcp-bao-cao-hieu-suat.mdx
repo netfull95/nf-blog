@@ -1,0 +1,377 @@
+---
+title: "Pancake CRM MCP — Hỏi AI để có báo cáo sales và hiệu suất nhân viên ngay lập tức"
+date: "2026-11-03"
+lastmod: "2026-11-03"
+language: "vi"
+translationKey: "pancake-crm-mcp-reporting"
+summary: "Pancake CRM v2 vừa ra MCP server tại mcp-crm.pancake.biz — kết nối 1 lần là AI đọc được toàn bộ Lead, Deal, Contact, Ticket, Đơn hàng từ workspace của bạn. Bài này cho bạn 15 prompt thực tế để làm báo cáo sales, theo dõi pipeline, đo hiệu suất nhân viên, và tìm khách cần follow-up — kèm công thức tự viết prompt và 6 kỹ thuật nâng cao khi làm việc với CRM MCP."
+tags: ["Pancake CRM", "MCP", "AI", "Báo cáo", "Sales", "Hiệu suất", "Không cần code"]
+---
+
+# Pancake CRM MCP — Hỏi AI để có báo cáo sales và hiệu suất nhân viên ngay lập tức
+
+> **TL;DR:** Pancake CRM v2 vừa ra **MCP server** tại `https://mcp-crm.pancake.biz/mcp`. Kết nối một lần, AI đọc được **Lead, Deal, Contact, Ticket, Đơn hàng** từ workspace của bạn — hỏi bằng tiếng Việt bình thường, nhận bảng số liệu trong vài giây. Bài này: kết nối nhanh → **15 prompt thực tế** chia theo nhóm việc → **6 kỹ thuật** giúp bạn hỏi đúng và đào sâu khi cần.
+
+> [!NOTE]
+> CRM MCP chỉ hoạt động với **CRM v2** (crm.pancake.vn/v2). CRM v1 không hỗ trợ — nếu workspace của bạn chưa chuyển sang v2, cần migrate trước.
+
+---
+
+## Vấn đề: số liệu có nhưng khó lấy
+
+> **Sales Manager:** "Tuần này ai close được deal nào chưa?"
+> → Vào CRM, lọc theo nhân viên, lọc theo trạng thái, export, ghép lại. **15 phút.**
+
+> **Giám đốc:** "Lead từ Facebook vs Google tháng này cái nào chuyển đổi tốt hơn?"
+> → "Để em chạy báo cáo… à, hệ thống chưa có sẵn cột đó." **1 ngày.**
+
+CRM không thiếu dữ liệu. Vấn đề là **mỗi câu hỏi đều cần click thủ công hoặc export về Excel**.
+
+Pancake CRM MCP cho phép AI của bạn — Claude, ChatGPT Codex, Cursor, bất kỳ app nào hỗ trợ MCP — **đọc trực tiếp dữ liệu CRM** và trả lời câu hỏi bằng tiếng Việt bình thường.
+
+---
+
+## Kết nối nhanh (1 lần duy nhất)
+
+### Bước 1 — Tạo API key trong CRM
+
+Vào **Cấu hình → Công cụ → tab Webhook - API**, bấm **Thêm mới**.
+
+![Màn hình tạo API key trong CRM — tab Webhook-API, nút Thêm mới, dòng key mới với công tắc Bật/Tắt](https://statics.pancake.vn/pancake-docs/2026/10/31/d40109abd716b551_image.png)
+
+Một dòng key mới xuất hiện, công tắc **Bật/Tắt** đã bật sẵn. Ghi chú tên key là `Claude AI` để dễ nhận diện về sau. Sao chép key và lưu ở nơi an toàn.
+
+> [!WARNING]
+> API key CRM có quyền tương đương CEO — có thể tạo, sửa, xóa dữ liệu trong workspace. Tạo key **riêng cho MCP**, không dùng chung. Nếu bị lộ: tắt công tắc **Bật/Tắt** tại Cấu hình → Công cụ → Webhook - API.
+
+### Bước 2 — Thêm connector vào Claude Desktop
+
+1. Mở **Settings → Connectors → Add custom connector**
+2. Nhập tên: `Pancake CRM`, URL: `https://mcp-crm.pancake.biz/mcp`
+3. Bấm **Add** — trình duyệt tự mở trang **Authorize Pancake CRM MCP**
+
+![Trang xác thực Authorize Pancake CRM MCP — ô nhập Pancake CRM API key, nút Authorize](https://statics.pancake.vn/pancake-docs/2026/10/31/94710ff5b720d8b4_image.png)
+
+4. Dán API key vào ô **Pancake CRM API key** → bấm **Authorize**
+5. **Đóng hoàn toàn Claude Desktop** (macOS: Cmd+Q) rồi mở lại để connector có hiệu lực
+
+> [!TIP]
+> Dùng **Claude Code, Cursor, hoặc app AI khác**? Trỏ URL `https://mcp-crm.pancake.biz/mcp` và gửi API key qua header `X-Api-Key`. Xem chi tiết tại [tài liệu chính thức CRM MCP](https://docs.pancake.biz/crm/st-f4/st-p4?lang=vi).
+
+### Kiểm tra đã kết nối
+
+> *"Liệt kê 5 Tiềm năng mới nhất."*
+
+Nếu AI trả về danh sách lead thật từ workspace, kết nối đã sẵn sàng. Nếu báo lỗi xác thực, kiểm tra lại API key.
+
+---
+
+## CRM MCP đọc được những gì?
+
+"Thực đơn" trước khi gọi món:
+
+| Module | Hỏi được gì |
+|---|---|
+| **Lead** (Tiềm năng) | Danh sách lead, lọc theo nguồn / trạng thái / nhân viên phụ trách / thời gian tạo / thẻ |
+| **Contact** (Liên hệ) | Thông tin liên hệ, lịch sử tương tác, lead đã chuyển đổi |
+| **Công ty** | Danh sách công ty khách hàng, liên hệ chính, đơn hàng liên quan |
+| **Deal** (Cơ hội) | Pipeline theo stage, giá trị deal, owner, thời gian tạo/cập nhật |
+| **Ticket** (Vấn đề) | Phiếu hỗ trợ theo trạng thái, mức độ ưu tiên, nhân viên xử lý |
+| **Đơn hàng** | Lịch sử đơn, doanh thu, sản phẩm, trạng thái thanh toán |
+| **Sản phẩm** | Danh mục, giá, tồn kho |
+| **Tệp khách hàng** | Custom Audience gắn với Facebook/TikTok Ads |
+| **Nguồn & Thẻ** | Danh sách nguồn khách hàng, Pancake Tag — dùng để lọc chính xác |
+
+---
+
+## 15 prompt thực tế
+
+### Nhóm 1 — Pipeline & Deal
+
+#### #1. Tổng quan pipeline hôm nay
+
+📌 Đầu ngày muốn biết deal đang ở đâu mà không cần mở CRM.
+
+> *"Dùng Pancake CRM MCP, cho mình xem số lượng cơ hội đang ở từng giai đoạn trong pipeline hiện tại. Trình bày bảng: tên giai đoạn — số deal — tổng giá trị ước tính."*
+
+✨ Snapshot pipeline 30 giây. Thấy ngay stage nào đang "kẹt" nhiều deal nhất.
+
+---
+
+#### #2. Deal sắp hết hạn trong 7 ngày
+
+📌 Cuối tuần họp, cần danh sách deal cần chốt gấp.
+
+> *"Lấy danh sách cơ hội có ngày dự kiến chốt trong 7 ngày tới, sắp xếp theo ngày gần nhất. Kèm tên khách, nhân viên phụ trách, giá trị, và giai đoạn hiện tại."*
+
+✨ Danh sách ưu tiên để sales gọi điện follow-up ngay.
+
+---
+
+#### #3. Deal stale — không có cập nhật quá 2 tuần
+
+📌 Tìm deal bị "bỏ quên" trong pipeline.
+
+> *"Tìm các cơ hội không được cập nhật trong 14 ngày qua và đang ở giai đoạn chưa chốt. Nhóm theo nhân viên phụ trách, cho biết deal nào lâu nhất."*
+
+✨ Danh sách deal cần manager nhắc nhở hoặc reassign.
+
+---
+
+#### #4. So sánh win rate tháng này vs tháng trước
+
+📌 Báo cáo tháng cho ban giám đốc.
+
+> *"So sánh tỷ lệ chốt deal thành công (Won) của tháng 11 và tháng 10 — theo tổng số và theo từng nhân viên. Tính win rate = số Won / (Won + Lost)."*
+
+✨ Bảng so sánh 2 kỳ, thấy ngay ai đang tăng ai đang giảm.
+
+---
+
+### Nhóm 2 — Lead & Chuyển đổi
+
+#### #5. Lead mới tuần này theo nguồn
+
+📌 Marketing muốn biết kênh nào đang ra lead tốt.
+
+> *"Lấy tất cả lead tạo trong 7 ngày qua của workspace. Nhóm theo Nguồn, đếm số lượng từng nguồn, sắp xếp giảm dần. Thêm cột tỷ lệ % trên tổng."*
+
+✨ Bảng nguồn lead — biết kênh nào đang chạy hiệu quả để tăng ngân sách.
+
+---
+
+#### #6. Tỷ lệ chuyển đổi Lead → Deal theo nguồn
+
+📌 Câu hỏi quan trọng hơn: lead về nhiều nhưng có convert không?
+
+> *"Trong 30 ngày qua: với từng Nguồn, cho mình biết số lead tạo mới, số lead đã chuyển đổi thành Deal, và tỷ lệ chuyển đổi. Sắp xếp theo tỷ lệ cao nhất."*
+
+✨ Phân biệt được kênh ra nhiều lead nhưng chất lượng thấp vs kênh ít nhưng chuyển đổi cao.
+
+---
+
+#### #7. Lead chưa có nhân viên phụ trách
+
+📌 Lead về nhưng không ai nhận — mất khách im lặng.
+
+> *"Liệt kê lead tạo trong 7 ngày qua chưa được gán nhân viên phụ trách. Sắp xếp theo thời gian tạo từ cũ nhất."*
+
+✨ Danh sách cần assign ngay trước khi khách nguội.
+
+---
+
+#### #8. Lead theo trạng thái — bức tranh phễu
+
+📌 Phễu bán hàng đang "kẹt" ở đâu?
+
+> *"Cho mình xem toàn bộ lead chia theo trạng thái hiện tại — đếm số lượng từng trạng thái. Tính thêm: mỗi trạng thái chiếm bao nhiêu % tổng. Trình bày dạng bảng."*
+
+✨ Thấy ngay stage nào đang tồn đọng nhiều nhất trong phễu.
+
+---
+
+### Nhóm 3 — Hiệu suất nhân viên sales
+
+#### #9. Bảng xếp hạng lead theo nhân viên tháng này
+
+📌 Review KPI cuối tháng.
+
+> *"Tháng này (từ 01/11 đến hôm nay), mỗi nhân viên sales đã tạo/nhận bao nhiêu lead? Xếp hạng giảm dần theo số lượng. Thêm cột: bao nhiêu lead đã chuyển sang Deal."*
+
+✨ Bảng KPI lead mà không cần chờ report cuối tháng.
+
+---
+
+#### #10. Doanh thu theo nhân viên tháng này
+
+📌 Tính commission hoặc review thưởng.
+
+> *"Tổng giá trị đơn hàng tháng 11 chia theo nhân viên phụ trách. Sắp xếp theo doanh thu cao nhất. Kèm số lượng đơn và giá trị trung bình mỗi đơn."*
+
+✨ Bảng doanh thu cá nhân — cơ sở tính hoa hồng chính xác.
+
+---
+
+#### #11. Nhân viên nào có deal "đóng băng" nhiều nhất
+
+📌 Coaching target — ai đang cần hỗ trợ?
+
+> *"Nhân viên nào đang có nhiều cơ hội chưa chốt và không cập nhật trong 10 ngày qua nhất? Liệt kê top 3, kèm số deal và deal nào lâu nhất."*
+
+✨ Chỉ ra ai cần manager check-in ngay thay vì chờ cuối tháng.
+
+---
+
+### Nhóm 4 — Ticket & Hỗ trợ
+
+#### #12. Ticket chưa xử lý theo mức độ ưu tiên
+
+📌 Đầu ngày, team CS muốn biết cần xử lý gì gấp.
+
+> *"Liệt kê tất cả Ticket đang mở (chưa đóng), nhóm theo mức độ ưu tiên: Khẩn cấp → Cao → Trung bình → Thấp. Kèm tên khách, ngày tạo, và nhân viên đang xử lý."*
+
+✨ Danh sách việc ưu tiên cho cả ngày, không cần mở CRM.
+
+---
+
+#### #13. Ticket quá hạn — chưa xử lý sau SLA
+
+📌 Tìm ticket đang trễ để escalate.
+
+> *"Ticket nào đã tạo hơn 24 giờ mà vẫn chưa có phản hồi đầu tiên từ nhân viên? Liệt kê kèm tên khách, thời gian tạo, và nhân viên được gán."*
+
+✨ Danh sách cần escalate ngay — tránh khách khiếu nại thêm.
+
+---
+
+### Nhóm 5 — Đơn hàng & Doanh thu
+
+#### #14. Doanh thu theo sản phẩm tháng này
+
+📌 Sản phẩm nào đang bán chạy?
+
+> *"Tổng doanh thu tháng 11 chia theo từng sản phẩm — số lượng bán, tổng giá trị, giá trị trung bình mỗi đơn. Top 10 sản phẩm có doanh thu cao nhất."*
+
+✨ Biết ngay sản phẩm flagship để tập trung marketing.
+
+---
+
+#### #15. Khách hàng chưa mua lại sau 60 ngày
+
+📌 Tìm khách cần reactivate campaign.
+
+> *"Danh sách Contact đã mua hàng nhưng lần mua gần nhất cách đây hơn 60 ngày. Kèm số đơn tổng, tổng giá trị đã mua, và ngày mua cuối. Xuất CSV."*
+
+✨ Danh sách target cho chiến dịch win-back — data sạch, không cần export thủ công.
+
+---
+
+## Công thức tự viết prompt
+
+Mọi prompt tốt với CRM MCP đều có cấu trúc:
+
+```
+[1] Dùng Pancake CRM MCP  +  [2] module nào  +  [3] thời gian / điều kiện lọc  +  [4] cần gì  +  [5] trình bày sao
+```
+
+Mẫu điền vào:
+
+> *"Dùng Pancake CRM MCP, lấy **[Lead / Deal / Ticket / Đơn hàng / Contact]** **[trong tháng này / 7 ngày qua / từ 01/10 đến 31/10]**, **[lọc theo nguồn Facebook / nhân viên Nguyễn A / trạng thái Won]**, cho mình **[số lượng / tổng giá trị / danh sách chi tiết]**. Trình bày dạng **[bảng / CSV / 3 dòng gạch đầu dòng]**."*
+
+Ví dụ cụ thể:
+
+> *"Dùng Pancake CRM MCP, lấy **Lead** **trong tháng 10**, **lọc theo nguồn Facebook**, cho mình **số lượng và tỷ lệ chuyển đổi**. Trình bày **bảng**."*
+
+---
+
+## 6 kỹ thuật làm việc hiệu quả với CRM MCP
+
+### Kỹ thuật 1 — Lọc nhiều điều kiện cùng lúc
+
+Đừng hỏi từng điều kiện một, gộp vào một prompt:
+
+> *"Lead từ nguồn Facebook, tạo trong tháng 10, gán cho nhân viên Minh, đang ở trạng thái Đang xử lý."*
+
+AI hiểu được điều kiện AND phức tạp. Hỏi lại từng cái vừa chậm vừa mất context.
+
+---
+
+### Kỹ thuật 2 — So sánh 2 kỳ trong 1 câu hỏi
+
+> *"So sánh số lead mới của tháng 10 và tháng 11 — theo tổng, theo nguồn, và theo nhân viên. Highlight những gì tăng trên 20% và giảm trên 20%."*
+
+AI tự tính delta và đánh dấu thay đổi đáng chú ý — không cần tự so bảng trong Excel.
+
+---
+
+### Kỹ thuật 3 — Pivot theo nhiều chiều
+
+CRM có nhiều chiều phân tích: nguồn × nhân viên × trạng thái × thời gian. Hỏi pivot theo 2 chiều cùng lúc:
+
+> *"Doanh thu tháng 11 chia theo nguồn (hàng) và theo nhân viên (cột). Trình bày dạng bảng pivot."*
+
+✨ Thấy ngay nhân viên nào mạnh ở nguồn nào — phân công lead thông minh hơn.
+
+---
+
+### Kỹ thuật 4 — Nhờ AI tính chỉ số phức tạp
+
+AI không chỉ lấy số liệu thô — nó tính được:
+
+> *"Tính conversion rate từng bước trong phễu: Lead mới → Đang xử lý → Đã chuyển thành Deal → Won. Cho mình tỷ lệ drop-off ở mỗi bước và bước nào đang mất nhiều nhất."*
+
+> *"Tính Average Deal Size (ADS) theo từng nhân viên và so với trung bình team."*
+
+> *"Tính số ngày trung bình từ lúc tạo lead đến lúc chốt thành công (Won). Nhân viên nào có sales cycle ngắn nhất?"*
+
+---
+
+### Kỹ thuật 5 — Export để dùng tiếp
+
+Thêm yêu cầu format vào cuối prompt:
+
+- `"Xuất CSV để mình dán vào Google Sheets"` — nhận khối text dán được ngay
+- `"Format JSON để mình gửi dev"` — cho tích hợp
+- `"Viết thành đoạn báo cáo ngắn để mình gửi sếp qua Zalo"` — tóm tắt thay vì bảng số
+
+---
+
+### Kỹ thuật 6 — Hỏi ngược để AI gợi ý prompt
+
+Không biết nên hỏi gì? Để AI đề xuất:
+
+> *"Tôi là Sales Manager dùng Pancake CRM v2. Với dữ liệu CRM MCP đang kết nối, hãy gợi ý 8 câu hỏi hữu ích nhất tôi nên hỏi mỗi tuần để theo dõi hiệu suất team sales. Viết sẵn prompt cho từng câu."*
+
+> *"Với data CRM của mình, tôi muốn tìm những lead có khả năng chuyển đổi cao nhất để ưu tiên gọi điện hôm nay. Gợi ý cách lọc và tiêu chí nào nên ưu tiên."*
+
+---
+
+## Xử lý khi prompt không ra kết quả
+
+| Hiện tượng | Cách sửa |
+|---|---|
+| AI hỏi lại *"workspace nào?"* | Thêm tên workspace hoặc hỏi AI liệt kê workspace bạn có quyền |
+| AI nói *"không tìm thấy dữ liệu"* | Mở rộng khoảng thời gian, bỏ bớt điều kiện lọc, kiểm tra lại tên nguồn/trạng thái chính xác |
+| Số liệu trông lạ | *"Cho mình xem dữ liệu thô bạn đã lấy để đối chiếu"* |
+| AI không gọi tool CRM, trả lời chung chung | Thêm **"Dùng Pancake CRM MCP"** vào đầu câu |
+| Lỗi 401 / unauthorized | API key hết hạn hoặc bị revoke — tạo key mới trong CRM và cập nhật connector |
+| Kết quả chỉ lấy được 1 trang | Thêm *"lấy tất cả, không giới hạn số lượng"* hoặc hỏi theo nhiều khoảng thời gian nhỏ |
+
+---
+
+## Câu hỏi thường gặp
+
+**Q: Khác gì với Pancake MCP (chat đa kênh)?**
+A: Hai MCP hoàn toàn khác nhau. **Pancake MCP** (`mcp.pancake.biz`) đọc dữ liệu hội thoại, tin nhắn, thống kê inbox — phù hợp cho CSKH. **CRM MCP** (`mcp-crm.pancake.biz`) đọc Lead, Deal, Contact, Ticket, Đơn hàng trong phễu bán hàng — phù hợp cho Sales. Có thể kết nối cả hai cùng lúc nếu cần.
+
+**Q: AI có ghi được dữ liệu vào CRM không?**
+A: Có — CRM MCP hỗ trợ cả đọc lẫn ghi (tạo Lead, tạo Deal, cập nhật trạng thái, xóa...). Nếu chỉ muốn dùng để báo cáo, nên thao tác cẩn thận và xác nhận trước khi cho AI thực hiện bất kỳ action ghi nào.
+
+**Q: Mỗi người trong team phải kết nối riêng không?**
+A: Có — mỗi người kết nối với API key của mình. Không dùng chung key để dễ kiểm tra audit log khi cần.
+
+**Q: CRM v1 dùng được không?**
+A: Không — CRM MCP chỉ hỗ trợ **CRM v2**. Liên hệ Pancake support để chuyển sang v2 nếu cần.
+
+---
+
+## Tổng kết
+
+CRM là kho dữ liệu lớn nhất của team sales, nhưng mỗi lần muốn rút ra insight lại mất 15–30 phút click thủ công.
+
+CRM MCP thay đổi điều đó: hỏi bằng tiếng Việt, nhận bảng số liệu trong 30 giây.
+
+**Điểm mạnh nhất** không phải các prompt mẫu — mà là **công thức tự viết prompt** và **6 kỹ thuật** ở phần trên. Nắm được công thức, bạn hỏi được bất kỳ câu nào — không chỉ 15 câu mẫu.
+
+**Làm ngay:**
+1. Kết nối ([hướng dẫn đầy đủ](https://docs.pancake.biz/crm/st-f4/st-p4?lang=vi)) — khoảng 5 phút
+2. Test với prompt #1 (tổng quan pipeline)
+3. Thử kỹ thuật số 3 (pivot) để thấy sức mạnh thật sự
+
+---
+
+### Xem thêm
+
+- [Tài liệu chính thức Pancake CRM MCP](https://docs.pancake.biz/crm/st-f4/st-p4?lang=vi)
+- [Pancake MCP — 10 prompt cho CSKH và inbox đa kênh](/blog/pancake-mcp-10-viec-ai-lam-ho-khong-can-code)
+- [Hệ sinh thái Pancake — CRM là sản phẩm nào?](/blog/gioi-thieu-pancake)
