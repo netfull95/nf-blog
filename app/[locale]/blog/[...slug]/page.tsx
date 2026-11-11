@@ -15,12 +15,7 @@ import siteMetadata from '@/data/siteMetadata'
 import { notFound } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
 import { routing } from '@/i18n/routing'
-import postTranslations from 'app/post-translations.json'
-
-const translationMap = postTranslations as {
-  byKey: Record<string, Partial<Record<string, string>>>
-  bySlug: Record<string, string>
-}
+import { localizedUrl, postLanguages } from '@/lib/seo'
 
 const defaultLayout = 'PostLayout'
 const layouts = {
@@ -34,9 +29,7 @@ export async function generateMetadata(props: {
 }): Promise<Metadata | undefined> {
   const params = await props.params
   const slug = decodeURI(params.slug.join('/'))
-  const post = allBlogs.find(
-    (p) => p.slug === slug && (p.language ?? 'vi') === params.locale
-  )
+  const post = allBlogs.find((p) => p.slug === slug && (p.language ?? 'vi') === params.locale)
   const authorList = post?.authors || ['default']
   const authorDetails = authorList.map((author) => {
     const authorResults = allAuthors.find((p) => p.slug === author)
@@ -59,32 +52,8 @@ export async function generateMetadata(props: {
     }
   })
 
-  // Self-referencing canonical. Must be set explicitly: providing an
-  // `alternates` object here overrides the root layout's `canonical: './'`,
-  // so without this the post ships no canonical tag at all and Google picks
-  // its own — which it did, flagging "Duplicate, Google chose different
-  // canonical than user" in Search Console.
-  const localePrefix =
-    params.locale === routing.defaultLocale ? '' : `/${params.locale}`
-  const canonical = `${siteMetadata.siteUrl}${localePrefix}/blog/${post.slug}`
-
-  // hreflang alternates for the post — only emit a language entry if a
-  // translation actually exists at that locale.
-  const tKey = translationMap.bySlug[post.slug]
-  const languages: Record<string, string> = {}
-  if (tKey) {
-    for (const locale of routing.locales) {
-      const altSlug = translationMap.byKey[tKey]?.[locale]
-      if (!altSlug) continue
-      const prefix = locale === routing.defaultLocale ? '' : `/${locale}`
-      const hreflang = locale === 'vi' ? 'vi-VN' : 'en-US'
-      languages[hreflang] = `${siteMetadata.siteUrl}${prefix}/blog/${altSlug}`
-    }
-    if (translationMap.byKey[tKey]?.[routing.defaultLocale]) {
-      languages['x-default'] =
-        `${siteMetadata.siteUrl}/blog/${translationMap.byKey[tKey][routing.defaultLocale]}`
-    }
-  }
+  const canonical = localizedUrl(`/blog/${post.slug}`, params.locale)
+  const languages = postLanguages(post, allBlogs)
 
   return {
     title: post.title,
@@ -126,9 +95,7 @@ export const generateStaticParams = async () => {
   return params
 }
 
-export default async function Page(props: {
-  params: Promise<{ locale: string; slug: string[] }>
-}) {
+export default async function Page(props: { params: Promise<{ locale: string; slug: string[] }> }) {
   const params = await props.params
   setRequestLocale(params.locale)
   const slug = decodeURI(params.slug.join('/'))

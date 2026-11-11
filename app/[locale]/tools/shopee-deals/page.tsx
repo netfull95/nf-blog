@@ -1,6 +1,5 @@
 import { genPageMetadata } from 'app/seo'
 import { setRequestLocale, getTranslations } from 'next-intl/server'
-import siteMetadata from '@/data/siteMetadata'
 import ShopeeDealsBoard from '@/components/tools/ShopeeDealsBoard'
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
@@ -8,22 +7,15 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const t = await getTranslations({ locale, namespace: 'Tools.deals' })
   // Canonical points at the real /tools/shopee-deals path so the /sale
   // rewrite alias doesn't create duplicate-content indexing.
-  const canonicalPath =
-    locale === 'en' ? '/en/tools/shopee-deals' : '/tools/shopee-deals'
   return genPageMetadata({
     title: t('metaTitle'),
+    path: '/tools/shopee-deals',
+    locale,
     description: t('metaDescription'),
-    alternates: {
-      canonical: `${siteMetadata.siteUrl}${canonicalPath}`,
-    },
   })
 }
 
-export default async function ShopeeDealsPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>
-}) {
+export default async function ShopeeDealsPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   setRequestLocale(locale)
   const t = await getTranslations({ locale, namespace: 'Tools.deals' })
@@ -34,9 +26,7 @@ export default async function ShopeeDealsPage({
         <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:text-4xl sm:leading-10 md:text-5xl md:leading-14 dark:text-gray-100">
           {t('title')}
         </h1>
-        <p className="text-lg leading-7 text-gray-500 dark:text-gray-400">
-          {t('metaDescription')}
-        </p>
+        <p className="text-lg leading-7 text-gray-500 dark:text-gray-400">{t('metaDescription')}</p>
       </div>
       <div className="py-8">
         <ShopeeDealsBoard />

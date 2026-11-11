@@ -6,7 +6,12 @@ import { tools } from '@/data/toolsData'
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   const t = await getTranslations({ locale, namespace: 'Tools' })
-  return genPageMetadata({ title: t('metaTitle'), description: t('metaDescription') })
+  return genPageMetadata({
+    path: '/tools',
+    locale,
+    title: t('metaTitle'),
+    description: t('metaDescription'),
+  })
 }
 
 export default async function ToolsPage({ params }: { params: Promise<{ locale: string }> }) {

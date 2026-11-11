@@ -4,7 +4,10 @@ import AuthorLayout from '@/layouts/AuthorLayout'
 import { coreContent } from 'pliny/utils/contentlayer'
 import { genPageMetadata } from 'app/seo'
 
-export const metadata = genPageMetadata({ title: 'About' })
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params
+  return genPageMetadata({ title: 'About', path: '/about', locale })
+}
 
 export default function Page() {
   const author = allAuthors.find((p) => p.slug === 'default') as Authors

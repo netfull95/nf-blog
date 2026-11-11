@@ -9,7 +9,7 @@ const POSTS_PER_PAGE = 5
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   const t = await getTranslations({ locale, namespace: 'Blog' })
-  return genPageMetadata({ title: t('metaTitle') })
+  return genPageMetadata({ path: '/blog', locale, title: t('metaTitle') })
 }
 
 export default async function BlogPage(props: { params: Promise<{ locale: string }> }) {

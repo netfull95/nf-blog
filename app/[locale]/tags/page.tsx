@@ -9,7 +9,12 @@ import { setRequestLocale, getTranslations } from 'next-intl/server'
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   const t = await getTranslations({ locale, namespace: 'Tags' })
-  return genPageMetadata({ title: t('metaTitle'), description: t('metaDescription') })
+  return genPageMetadata({
+    path: '/tags',
+    locale,
+    title: t('metaTitle'),
+    description: t('metaDescription'),
+  })
 }
 
 const tagDataByLocale: Record<string, Record<string, number>> = {

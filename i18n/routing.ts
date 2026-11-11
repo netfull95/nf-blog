@@ -4,10 +4,11 @@ export const routing = defineRouting({
   locales: ['vi', 'en'],
   defaultLocale: 'vi',
   localePrefix: 'as-needed',
-  // Disable next-intl's Accept-Language auto-detection — we handle locale
-  // selection ourselves in middleware based on the visitor's geo IP
-  // (x-vercel-ip-country header). VN → VI default, others → /en.
+  // Keep each URL stable regardless of visitor language, cookie or country.
   localeDetection: false,
+  // Post translations have different slugs. Metadata and sitemap emit the
+  // actual counterparts instead of middleware guessing same-slug URLs.
+  alternateLinks: false,
 })
 
 export type Locale = (typeof routing.locales)[number]

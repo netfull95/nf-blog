@@ -47,11 +47,6 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: './',
-    languages: {
-      'vi-VN': '/',
-      'en-US': '/en',
-      'x-default': '/',
-    },
     types: {
       'application/rss+xml': `${siteMetadata.siteUrl}/feed.xml`,
     },
@@ -100,11 +95,7 @@ export default async function RootLayout({
       className={`${space_grotesk.variable} scroll-smooth`}
       suppressHydrationWarning
     >
-      <link
-        rel="icon"
-        type="image/svg+xml"
-        href={`${basePath}/static/favicons/favicon.svg`}
-      />
+      <link rel="icon" type="image/svg+xml" href={`${basePath}/static/favicons/favicon.svg`} />
       <link rel="icon" type="image/x-icon" href={`${basePath}/static/favicons/favicon.ico`} />
       <link
         rel="icon"

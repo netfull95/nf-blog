@@ -5,14 +5,15 @@ import QRGenerator from '@/components/tools/QRGenerator'
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   const t = await getTranslations({ locale, namespace: 'Tools.qr' })
-  return genPageMetadata({ title: t('metaTitle'), description: t('metaDescription') })
+  return genPageMetadata({
+    path: '/tools/qr-generator',
+    locale,
+    title: t('metaTitle'),
+    description: t('metaDescription'),
+  })
 }
 
-export default async function QRGeneratorPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>
-}) {
+export default async function QRGeneratorPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   setRequestLocale(locale)
   const t = await getTranslations({ locale, namespace: 'Tools.qr' })

@@ -5,7 +5,12 @@ import ShopeeShortlinkGenerator from '@/components/tools/ShopeeShortlinkGenerato
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   const t = await getTranslations({ locale, namespace: 'Tools.shopee' })
-  return genPageMetadata({ title: t('metaTitle'), description: t('metaDescription') })
+  return genPageMetadata({
+    path: '/tools/shopee-shortlink',
+    locale,
+    title: t('metaTitle'),
+    description: t('metaDescription'),
+  })
 }
 
 export default async function ShopeeShortlinkPage({
