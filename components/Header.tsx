@@ -12,7 +12,8 @@ const Header = async () => {
   const t = await getTranslations('Nav')
   let headerClass = 'flex items-center w-full bg-white dark:bg-gray-950 justify-between py-10'
   if (siteMetadata.stickyNav) {
-    headerClass += ' sticky top-0 z-50'
+    headerClass =
+      'flex items-center w-full justify-between py-4 sticky top-0 z-50 border-b border-gray-200 bg-white/85 backdrop-blur dark:border-gray-800 dark:bg-gray-950/85'
   }
 
   return (

@@ -8,8 +8,6 @@ summary: "Pancake's official MCP server bundles the entire API documentation as 
 tags: ["Pancake", "API", "MCP", "Claude Desktop", "Cursor", "AI", "Pancake developer", "Automation"]
 ---
 
-# Pancake API MCP — Ship Pancake API docs + live calls into Claude Desktop / Cursor in 5 minutes
-
 > **TL;DR:** [`pancake-vn/pancake-api-mcp`](https://github.com/pancake-vn/pancake-api-mcp) is Pancake's official MCP server — a Node process that runs locally and ships an OpenAPI snapshot of **31 REST endpoints + 5 webhooks + 11 guides**. Wire it into Claude Desktop / Cursor once and your AI reads Pancake docs on its own (no more copy-paste). Add `PANCAKE_PAGE_ACCESS_TOKEN` to the env block and the assistant can hit the real Pancake API (list conversations, send messages, pull stats…). Tokens never travel through chat, are loaded from the environment, and are redacted from every log. Set `PANCAKE_READ_ONLY=true` if you only want the AI to read. Requires Node 18+, takes under 5 minutes to install.
 
 When integrating with the Pancake API (we've built a decent [series](/en/blog/introducing-pancake) on it), the question devs ask most often is:

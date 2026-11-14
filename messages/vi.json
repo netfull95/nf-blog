@@ -211,11 +211,68 @@
     "tags": "Chủ đề",
     "search": "Tìm kiếm",
     "toggleMenu": "Mở/đóng menu",
-    "toggleTheme": "Đổi giao diện"
+    "toggleTheme": "Đổi giao diện",
+    "copy": "Sao chép",
+    "copied": "Đã sao chép",
+    "copyCode": "Sao chép đoạn code"
   },
   "Home": {
     "latest": "Mới nhất",
-    "noPosts": "Chưa có bài viết nào."
+    "description": "Nơi chia sẻ kinh nghiệm về tự động hoá, tích hợp Pancake và những điều mình đang làm.",
+    "noPosts": "Chưa có bài viết nào.",
+    "hero": {
+      "eyebrow": "IT Business Analyst · Pancake",
+      "greeting": "Xin chào, mình là Định Phan",
+      "intro": "Hơn 8 năm làm kỹ thuật phần mềm trước khi chuyển sang Business Analyst. Ở đây mình viết về cách dùng Pancake hiệu quả, cách đồng bộ dữ liệu từ Pancake về hệ thống riêng của doanh nghiệp, và cách đưa AI vào vận hành hằng ngày.",
+      "skills": [
+        "Phân tích nghiệp vụ",
+        "Tích hợp API & Webhook",
+        "Đồng bộ dữ liệu",
+        "AI & MCP"
+      ],
+      "ctaPrimary": "Đọc bài viết",
+      "ctaSecondary": "Về mình",
+      "avatarAlt": "Ảnh đại diện Định Phan"
+    },
+    "featured": {
+      "title": "Bắt đầu từ đây",
+      "readPost": "Đọc bài"
+    },
+    "seriesSection": {
+      "title": "Hướng dẫn Pancake theo chủ đề",
+      "disclaimer": "Đây là blog cá nhân, không phải kênh chính thức của Pancake.",
+      "postCount": "{count} bài"
+    },
+    "series": {
+      "pancakeApi": {
+        "title": "Pancake API & đồng bộ dữ liệu",
+        "description": "Webhook, API hội thoại, khách hàng, thống kê — đưa dữ liệu Pancake về hệ thống của bạn."
+      },
+      "pancakeCrm": {
+        "title": "Pancake CRM",
+        "description": "CRM API, quản lý Lead/Account/Contact và báo cáo bằng AI."
+      },
+      "noCodeAi": {
+        "title": "No-code & AI",
+        "description": "Cài đặt và tự động hoá không cần code: MCP, Botcake, Email, Zalo."
+      },
+      "personalFinance": {
+        "title": "Tài chính cá nhân",
+        "description": "Ghi chép tài chính cá nhân hằng tháng."
+      }
+    },
+    "latestSection": {
+      "title": "Bài mới"
+    },
+    "minutesRead": "{minutes} phút đọc",
+    "more": {
+      "title": "Công cụ khác",
+      "finance": "Tài chính cá nhân"
+    },
+    "contact": {
+      "title": "Kết nối với mình",
+      "description": "Bạn muốn trao đổi về bài viết, Pancake hay nghề BA? Gửi email hoặc nhắn qua các kênh dưới đây."
+    }
   },
   "Blog": {
     "title": "Bài viết",

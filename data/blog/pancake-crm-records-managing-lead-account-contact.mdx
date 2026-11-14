@@ -8,8 +8,6 @@ summary: "Complete reference for the 4 Records endpoints in the Pancake CRM API 
 tags: ["Pancake CRM", "API", "Records", "Lead", "Contact", "Account", "Workspace", "api_key", "Pancake developer", "CRUD"]
 ---
 
-# Pancake CRM Records CRUD API — Managing lead / account / contact
-
 > **TL;DR:** Pancake CRM exposes **4 Records endpoints** for the 3 table types `lead` / `account` / `contact`: `GET /workspaces/{ws}/{table}/records` (list with JSON filter + cursor pagination), `POST /workspaces/{ws}/{table}/records` (**upsert** — `id` present = update, `id` omitted = create; there is NO separate create/update endpoint), `DELETE /workspaces/{ws}/{table}/records?record_ids[]=...` (bulk delete), and `GET /workspaces/{ws}/record/{id}` (single — different URL pattern from list). The filter supports **9 operators** and AND/OR logic. Watch out for the special **422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** error — you can't update a lead that has been canceled/converted/merged.
 
 Once you've set up [the Pancake CRM API + api_key](/en/blog/introducing-pancake-crm-api), the most-used endpoint group is **Records** — where leads/contacts/accounts for the workspace live. This post covers all 4 CRUD endpoints, the full filter JSON syntax, and the common pitfalls you'll hit when integrating.

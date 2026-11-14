@@ -8,8 +8,6 @@ summary: "Full reference for the 7 Statistics endpoints in the Pancake chat API 
 tags: ["Pancake", "API", "Statistics", "Page Access Token", "Reporting", "Analytics", "BI", "KPI", "Ads", "Pancake developer"]
 ---
 
-# Pancake Statistics API — 7 endpoints (page, user, tag, engagement, ads, new customer)
-
 > **TL;DR:** Pancake exposes **7 Statistics endpoints** under `https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/...` for reporting: **`pages`** (page overview by hour), **`users`** (agent KPIs), **`tags`** (per-tag breakdown), **`customer_engagements`** (engagement chart), **`pages_campaigns`** + **`ads`** (ad reporting), **`page_customers`** (new customer growth). All require a `page_access_token`. **Critical**: Pancake uses **3 different date param formats** across endpoints (`since`/`until` Unix seconds, `date_range` string `"DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS"`, `date_range` string `"DD/MM/YYYY - DD/MM/YYYY"`) — wrong format = empty response or 400 with no clear error message.
 
 Once you know how to [list conversations](/en/blog/get-pancake-conversations-list-api), [sync customers](/en/blog/pancake-page-customers-api-sync-to-crm), and [manage tags/assignments](/en/blog/pancake-conversation-workflow-tag-assign-api), this post covers the remaining Pancake chat endpoint group — **Statistics**. This is what you reach for when building internal BI dashboards, agent KPI reports, ad ROI tracking, or scheduled email/Slack reports.

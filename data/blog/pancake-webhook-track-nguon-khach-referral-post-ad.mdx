@@ -8,8 +8,6 @@ summary: "Khách nhắn vào Facebook Page qua Messenger nhưng đội marketing
 tags: ["Pancake", "Webhook", "API", "Facebook Messenger", "Ads", "Tích hợp", "Pancake developer"]
 ---
 
-# Xác định nguồn khách vào Facebook Page qua Webhook Pancake — referral, ad_id
-
 > **TL;DR:** Bài này nói riêng cho **Fanpage Facebook kết nối Pancake** (không áp dụng cho Zalo, TikTok, Instagram Direct — mỗi nền tảng có cơ chế riêng). Khi khách nhắn tin vào Messenger của Fanpage, Pancake webhook có thể chứa trường **`referral`** (khi khách vào từ link `m.me` có tham số `ref`) hoặc trường có **`ad_id`** (khi khách vào từ quảng cáo Click-to-Messenger). Nếu khách tự tìm Fanpage và nhắn thẳng thì webhook **không chứa thông tin nguồn** — không có cách nào biết. Cách chủ động nhất để phủ được nhiều kênh nhất là **luôn dùng link `m.me/tenpage?ref=...`** ở mọi nơi ngoài Facebook (website, email, QR code, bio TikTok/Zalo…).
 
 Trong quá trình hỗ trợ khách hàng tích hợp Pancake vào hệ thống CRM/BI nội bộ, có 2 câu hỏi lặp lại nhiều lần:

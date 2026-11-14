@@ -8,8 +8,6 @@ summary: "Pancake CRM is one product within the Pancake ecosystem — with featu
 tags: ["Pancake", "Pancake CRM", "API", "Workspace", "api_key", "Lead", "Contact", "Order", "Ticket", "Pancake developer", "Integration"]
 ---
 
-# Introducing the Pancake CRM API — Position in the Pancake Ecosystem, api_key Setup, Endpoint Overview
-
 > **TL;DR:** **Pancake CRM** is **one product within the Pancake ecosystem** — alongside Pancake's multi-channel chat (managing FB/IG/Zalo conversations), the CRM serves a completely different domain: **sales pipeline + customer management**. Base URL `https://crm.pancake.vn/api`, authenticated by **`api_key`** passed as a query param (NOT a Bearer header, NOT the chat product's `page_access_token`). Multi-tenant by **workspace**. Provides 6 endpoint groups: **Records** (lead/account/contact), **Orders**, **Tickets**, **Sources**, **Tags** (CRM-scoped), and **Webhook** for realtime `record` events. This is the first pillar of the Pancake CRM cluster — later posts will dive into each endpoint in depth.
 
 The Pancake ecosystem includes multiple specialized products for different business operations — multi-channel chat (Pancake chat — see the [6-post API cluster](/en/blog/introducing-pancake)), Pancake POS, Pancake CRM, and others. Each product has its own API + token but shares the "page/workspace + admin dashboard" concept.

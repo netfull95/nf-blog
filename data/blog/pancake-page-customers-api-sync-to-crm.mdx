@@ -8,8 +8,6 @@ summary: "Complete guide to the Pancake Page Customers API — listing customers
 tags: ["Pancake", "API", "Page Access Token", "Page Customers", "CRM", "Pancake developer", "Facebook Messenger", "Integration", "Customer Sync"]
 ---
 
-# Pancake Page Customers API — Sync customers into your CRM with notes & avatar
-
 > **TL;DR:** The Page Customers cluster has 4 main endpoints on `https://pages.fm/api/public_api/v1`: `GET /pages/{page_id}/page_customers` (list — **offset-based** with `page_number` + `page_size`, max 100), `PUT /pages/{page_id}/page_customers/{id}` (update name/phone/gender/birthday), and `POST | PUT | DELETE /pages/{page_id}/page_customers/{id}/notes` (CRUD internal notes). `since` and `until` are **required** (in seconds). Bonus: `GET /pages/{page_id}/avatar/{psid}` is a **public** endpoint with no token required — usable directly as an `<img src>`.
 
 After you know how to [list Pancake conversations](/en/blog/get-pancake-conversations-list-api), the next step in most CRM/data-warehouse projects is **syncing customer information** — name, phone numbers, gender, internal notes — into your sales pipeline, marketing campaigns, or analytics reports.

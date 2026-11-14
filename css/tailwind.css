@@ -7,22 +7,35 @@
 /* Core theme configuration */
 @theme {
   /* Font families */
-  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+  --font-sans: var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
     'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
   /* Colors */
-  /* Copied from https://tailwindcss.com/docs/theme#default-theme-variable-reference */
-  --color-primary-50: oklch(0.971 0.014 343.198);
-  --color-primary-100: oklch(0.948 0.028 342.258);
-  --color-primary-200: oklch(0.899 0.061 343.231);
-  --color-primary-300: oklch(0.823 0.12 346.018);
-  --color-primary-400: oklch(0.718 0.202 349.761);
-  --color-primary-500: oklch(0.656 0.241 354.308);
-  --color-primary-600: oklch(0.592 0.249 0.584);
-  --color-primary-700: oklch(0.525 0.223 3.958);
-  --color-primary-800: oklch(0.459 0.187 3.815);
-  --color-primary-900: oklch(0.408 0.153 2.432);
-  --color-primary-950: oklch(0.284 0.109 3.907);
+  /* Primary = Tailwind cyan shifted one step darker from 300 up (readable links). Copied from https://tailwindcss.com/docs/theme#default-theme-variable-reference */
+  --color-primary-50: oklch(0.984 0.019 200.873);
+  --color-primary-100: oklch(0.956 0.045 203.388);
+  --color-primary-200: oklch(0.917 0.08 205.041);
+  --color-primary-300: oklch(0.789 0.154 211.53);
+  --color-primary-400: oklch(0.715 0.143 215.221);
+  --color-primary-500: oklch(0.609 0.126 221.723);
+  --color-primary-600: oklch(0.52 0.105 223.128);
+  --color-primary-700: oklch(0.45 0.085 224.283);
+  --color-primary-800: oklch(0.398 0.07 227.392);
+  --color-primary-900: oklch(0.302 0.056 229.695);
+  --color-primary-950: oklch(0.302 0.056 229.695);
+
+  /* Accent = Tailwind amber, for highlights such as badges and inline code */
+  --color-accent-50: oklch(0.987 0.022 95.277);
+  --color-accent-100: oklch(0.962 0.059 95.617);
+  --color-accent-200: oklch(0.924 0.12 95.746);
+  --color-accent-300: oklch(0.879 0.169 91.605);
+  --color-accent-400: oklch(0.828 0.189 84.429);
+  --color-accent-500: oklch(0.769 0.188 70.08);
+  --color-accent-600: oklch(0.666 0.179 58.318);
+  --color-accent-700: oklch(0.555 0.163 48.998);
+  --color-accent-800: oklch(0.473 0.137 46.201);
+  --color-accent-900: oklch(0.414 0.112 45.904);
+  --color-accent-950: oklch(0.279 0.077 45.635);
 
   --color-gray-50: oklch(0.985 0.002 247.839);
   --color-gray-100: oklch(0.967 0.003 264.542);
@@ -97,11 +110,25 @@
       font-weight: 600;
     }
     & :where(code):not(pre code) {
-      color: var(--color-indigo-500);
+      color: var(--color-accent-700);
+    }
+    & table {
+      font-size: 0.9em;
+    }
+    & thead th {
+      background: var(--color-gray-100);
+      padding: 0.5rem 0.75rem;
+    }
+    & tbody td {
+      padding: 0.5rem 0.75rem;
+    }
+    & tbody tr:nth-child(even) {
+      background: var(--color-gray-50);
     }
   }
 
-  .prose-invert {
+  .prose-invert,
+  .dark\:prose-invert:where(.dark, .dark *) {
     & a {
       color: var(--color-primary-500);
       &:hover {
@@ -113,6 +140,15 @@
     }
     & :where(h1, h2, h3, h4, h5, h6) {
       color: var(--color-gray-100);
+    }
+    & :where(code):not(pre code) {
+      color: var(--color-accent-400);
+    }
+    & thead th {
+      background: var(--color-gray-800);
+    }
+    & tbody tr:nth-child(even) {
+      background: color-mix(in oklch, var(--color-gray-800) 40%, transparent);
     }
   }
 }
@@ -188,4 +224,33 @@ input:-webkit-autofill:focus {
 
 .toast-enter {
   animation: toast-in 200ms ease-out;
+}
+
+/* Code blocks: CodeBlock renders its own frame, so drop prose spacing on <pre> */
+.code-block pre {
+  margin: 0;
+  border-radius: 0;
+}
+
+/* Vietnamese labels for GitHub-style alerts (the plugin only emits English titles) */
+html[lang^='vi'] .markdown-alert-title {
+  font-size: 0;
+}
+html[lang^='vi'] .markdown-alert-title::after {
+  font-size: 1rem;
+}
+html[lang^='vi'] .markdown-alert-note .markdown-alert-title::after {
+  content: 'Ghi chú';
+}
+html[lang^='vi'] .markdown-alert-tip .markdown-alert-title::after {
+  content: 'Mẹo';
+}
+html[lang^='vi'] .markdown-alert-important .markdown-alert-title::after {
+  content: 'Quan trọng';
+}
+html[lang^='vi'] .markdown-alert-warning .markdown-alert-title::after {
+  content: 'Cảnh báo';
+}
+html[lang^='vi'] .markdown-alert-caution .markdown-alert-title::after {
+  content: 'Thận trọng';
 }

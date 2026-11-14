@@ -1,11 +1,21 @@
 import Link from './Link'
 import siteMetadata from '@/data/siteMetadata'
 import SocialIcon from '@/components/social-icons'
+import headerNavLinks from '@/data/headerNavLinks'
+import { getTranslations } from 'next-intl/server'
 
-export default function Footer() {
+export default async function Footer() {
+  const t = await getTranslations('Nav')
   return (
     <footer>
-      <div className="mt-16 flex flex-col items-center">
+      <div className="mt-16 flex flex-col items-center border-t border-gray-200 pt-8 dark:border-gray-800">
+        <nav className="mb-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+          {headerNavLinks.map((link) => (
+            <Link key={link.key} href={link.href} className="hover:text-primary-500">
+              {t(link.key)}
+            </Link>
+          ))}
+        </nav>
         <div className="mb-3 flex space-x-4">
           <SocialIcon kind="mail" href={`mailto:${siteMetadata.email}`} size={6} />
           <SocialIcon kind="github" href={siteMetadata.github} size={6} />
@@ -25,6 +35,8 @@ export default function Footer() {
           <div>{`© ${new Date().getFullYear()}`}</div>
           <div>{` • `}</div>
           <Link href="/">{siteMetadata.title}</Link>
+          <div>{` • `}</div>
+          <a href="/feed.xml">RSS</a>
         </div>
         {/* <div className="mb-8 text-sm text-gray-500 dark:text-gray-400">
           <Link href="https://github.com/timlrx/tailwind-nextjs-starter-blog">

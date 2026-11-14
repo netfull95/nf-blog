@@ -2,7 +2,7 @@ import 'css/tailwind.css'
 import 'pliny/search/algolia.css'
 import 'remark-github-blockquote-alert/alert.css'
 
-import { Space_Grotesk } from 'next/font/google'
+import { Be_Vietnam_Pro } from 'next/font/google'
 import { Analytics, AnalyticsConfig } from 'pliny/analytics'
 import { Analytics as VercelAnalytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
@@ -19,10 +19,11 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { routing } from '@/i18n/routing'
 
-const space_grotesk = Space_Grotesk({
-  subsets: ['latin'],
+const be_vietnam_pro = Be_Vietnam_Pro({
+  subsets: ['latin', 'vietnamese'],
+  weight: ['400', '500', '600', '700', '800'],
   display: 'swap',
-  variable: '--font-space-grotesk',
+  variable: '--font-be-vietnam-pro',
 })
 
 export function generateStaticParams() {
@@ -92,7 +93,7 @@ export default async function RootLayout({
   return (
     <html
       lang={htmlLang}
-      className={`${space_grotesk.variable} scroll-smooth`}
+      className={`${be_vietnam_pro.variable} scroll-smooth`}
       suppressHydrationWarning
     >
       <link rel="icon" type="image/svg+xml" href={`${basePath}/static/favicons/favicon.svg`} />

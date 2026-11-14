@@ -1,11 +1,11 @@
 /** @type {import("pliny/config").PlinyConfig } */
 const siteMetadata = {
   title: "netFull's Blog",
-  author: 'Dinh Phan',
+  author: 'Định Phan',
   headerTitle: `netFull's Blog`,
   description: 'A place to share blogs about my interests and work. With the hope of bringing value to everyone.',
   language: 'en-us',
-  theme: 'dark', // system, dark or light
+  theme: 'system', // system, dark or light
   siteUrl: 'https://netfull.top',
   siteRepo: 'https://github.com/netfull95/nf-blog',
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
@@ -24,7 +24,7 @@ const siteMetadata = {
   // bluesky: 'https://bsky.app/',
   locale: 'en-US',
   // set to true if you want a navbar fixed to the top
-  stickyNav: false,
+  stickyNav: true,
   analytics: {
     // If you want to use an analytics provider you have to add it to the
     // content security policy in the `next.config.js` file.

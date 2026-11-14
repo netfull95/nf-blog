@@ -8,8 +8,6 @@ summary: "So sánh 3 phương án thực dụng để truy xuất data khách h�
 tags: ["Pancake", "API", "CRM", "Integration", "Pancake developer", "Tích hợp", "Postman", "Make.com", "n8n", "Customer Sync"]
 ---
 
-# 3 phương án truy xuất data Pancake để đẩy vào CRM — Cẩm nang cho kĩ thuật viên
-
 > **TL;DR:** Có 3 phương án thực dụng để truy xuất data từ Pancake và đẩy vào CRM nội bộ: **(1) Postman** chạy tay — phù hợp báo cáo tuần/tháng, 30 phút setup, không cần code; **(2) Make.com / n8n** — no-code automation, sync 5-15 phút/lần, tốn 0-500K/tháng; **(3) Self-hosted Node.js cron** — full code, latency 5 phút đến realtime, cần dev maintain. Bài này hướng dẫn kĩ thuật viên chọn đúng phương án theo volume + latency + ngân sách, kèm setup chi tiết cho từng cái.
 
 Pancake có dashboard quản lý chat đa kênh tốt, nhưng đa số shop sau khi dùng một thời gian đều cần **đẩy data sang CRM riêng** — HubSpot, Salesforce, hoặc CRM internal — để sales/marketing/kế toán làm việc trên 1 hệ thống duy nhất. Bài này dành cho **kĩ thuật viên / IT support tại shop** đang được giao nhiệm vụ đó.

@@ -8,8 +8,6 @@ summary: "MCP server chính thức của Pancake đóng gói toàn bộ tài li�
 tags: ["Pancake", "API", "MCP", "Claude Desktop", "Cursor", "AI", "Pancake developer", "Tự động hoá"]
 ---
 
-# Pancake API MCP — Đưa docs API và call live vào Claude Desktop / Cursor trong 5 phút
-
 > **TL;DR:** [`pancake-vn/pancake-api-mcp`](https://github.com/pancake-vn/pancake-api-mcp) là MCP server chính thức của Pancake — chạy Node local, đóng gói snapshot OpenAPI của **31 REST endpoint + 5 webhook + 11 guide**. Kết nối vào Claude Desktop / Cursor 1 lần, AI đọc docs Pancake tự thân (không cần bạn copy-paste). Cấu hình thêm `PANCAKE_PAGE_ACCESS_TOKEN` vào env → AI có thể call live Pancake API thật (list hội thoại, gửi tin nhắn, xem thống kê…). Token không bao giờ đi qua chat, đọc từ env, redacted trong log. Cài `PANCAKE_READ_ONLY=true` nếu chỉ cho AI đọc. Yêu cầu Node 18+, cài chưa đến 5 phút.
 
 Trong quá trình tích hợp Pancake API (đã có [series](/blog/gioi-thieu-pancake) khá đầy đủ), câu hỏi lặp lại nhiều nhất từ dev là:

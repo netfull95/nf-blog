@@ -8,7 +8,8 @@ import PageTitle from '@/components/PageTitle'
 import SectionContainer from '@/components/SectionContainer'
 import siteMetadata from '@/data/siteMetadata'
 import ScrollTopAndComment from '@/components/ScrollTopAndComment'
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { dateLocale } from '@/lib/dateLocale'
 
 interface LayoutProps {
   content: CoreContent<Blog>
@@ -20,6 +21,7 @@ interface LayoutProps {
 export default async function PostLayout({ content, next, prev, children }: LayoutProps) {
   const { path, slug, date, title } = content
   const t = await getTranslations('Post')
+  const locale = dateLocale(await getLocale())
 
   return (
     <SectionContainer>
@@ -32,7 +34,7 @@ export default async function PostLayout({ content, next, prev, children }: Layo
                 <div>
                   <dt className="sr-only">{t('publishedOn')}</dt>
                   <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
-                    <time dateTime={date}>{formatDate(date, siteMetadata.locale)}</time>
+                    <time dateTime={date}>{formatDate(date, locale)}</time>
                   </dd>
                 </div>
               </dl>

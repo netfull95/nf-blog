@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { useLocale } from 'next-intl'
 import { formatDate } from 'pliny/utils/formatDate'
 import { CoreContent } from 'pliny/utils/contentlayer'
 import type { Blog } from 'contentlayer/generated'
 import Link from '@/components/Link'
 import Tag from '@/components/Tag'
-import siteMetadata from '@/data/siteMetadata'
+import { dateLocale } from '@/lib/dateLocale'
 
 interface PaginationProps {
   totalPages: number
@@ -71,6 +72,7 @@ export default function ListLayout({
   initialDisplayPosts = [],
   pagination,
 }: ListLayoutProps) {
+  const locale = useLocale()
   const [searchValue, setSearchValue] = useState('')
   const filteredBlogPosts = posts.filter((post) => {
     const searchContent = post.title + post.summary + post.tags?.join(' ')
@@ -125,7 +127,7 @@ export default function ListLayout({
                   <dl>
                     <dt className="sr-only">Published on</dt>
                     <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
-                      <time dateTime={date}>{formatDate(date, siteMetadata.locale)}</time>
+                      <time dateTime={date}>{formatDate(date, dateLocale(locale))}</time>
                     </dd>
                   </dl>
                   <div className="space-y-3 xl:col-span-3">

@@ -8,8 +8,6 @@ summary: "Hướng dẫn chi tiết 4 nhóm endpoint quản lý vòng đời h�
 tags: ["Pancake", "API", "Page Access Token", "Conversations", "CRM Workflow", "Tag", "Assign", "Pancake developer", "Tích hợp"]
 ---
 
-# Quản lý hội thoại Pancake API — Tag, Assign nhân viên, Mark Read/Unread
-
 > **TL;DR:** Pancake cung cấp 4 nhóm endpoint quản lý workflow CRM trong conversation: `POST /conversations/{id}/tags` (add/remove tag), `POST /conversations/{id}/assign` (assign nhân viên xử lý), `POST /conversations/{id}/read` và `/unread` (đánh dấu đã/chưa đọc). Kèm 2 endpoint lookup: `GET /pages/{id}/tags` và `GET /pages/{id}/users`. Tất cả ở `public_api/v1`, dùng `page_access_token`. **Bonus**: Pancake có tính năng **round-robin tự động** built-in — bạn config 1 lần ở dashboard, hệ thống sẽ tự assign hội thoại mới cho nhân viên theo lượt, không cần tự code.
 
 Sau khi đã biết cách [lấy danh sách hội thoại](/blog/lay-danh-sach-hoi-thoai-pancake-api) và [đồng bộ khách hàng](/blog/dong-bo-khach-hang-pancake-api-page-customers) từ Pancake, bước tiếp theo trong CRM workflow là **quản lý vòng đời của mỗi hội thoại**: phân loại bằng tag, giao việc cho nhân viên, đánh dấu cần follow-up sau. Bài này cover đầy đủ 4 endpoint workflow + 2 endpoint lookup, kèm pattern thực chiến.

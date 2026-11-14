@@ -43,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
           {sortedTags.map((t) => {
             return (
               <div key={t} className="mt-2 mr-5 mb-2">
-                <Tag text={t} />
+                <Tag text={t.replace(/-/g, ' ')} />
                 <Link
                   href={`/tags/${slug(t)}`}
                   className="-ml-2 text-sm font-semibold text-gray-600 uppercase dark:text-gray-300"

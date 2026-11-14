@@ -1,94 +1,48 @@
-import Link from '@/components/Link'
-import Tag from '@/components/Tag'
-import siteMetadata from '@/data/siteMetadata'
-import { formatDate } from 'pliny/utils/formatDate'
-import NewsletterForm from 'pliny/ui/NewsletterForm'
-import { getTranslations } from 'next-intl/server'
+import { allAuthors } from 'contentlayer/generated'
+import { featuredTranslationKeys, series, seriesOf } from '@/data/series'
+import Hero from '@/components/home/Hero'
+import FeaturedPost from '@/components/home/FeaturedPost'
+import SeriesGrid from '@/components/home/SeriesGrid'
+import LatestPosts from '@/components/home/LatestPosts'
+import MoreStrip from '@/components/home/MoreStrip'
+import ContactBlock from '@/components/home/ContactBlock'
+import type { HomePost } from '@/components/home/types'
 
-const MAX_DISPLAY = 5
+const MAX_LATEST = 5
+// Shown as cards; personal finance goes in the small "Other" strip instead.
+const PRIMARY_SERIES = series.filter((s) => s.key !== 'personalFinance')
 
 export default async function Home({ posts }) {
-  const t = await getTranslations('Home')
-  const tc = await getTranslations('Common')
+  const author = allAuthors.find((a) => a.slug === 'default')
+  const homePosts: HomePost[] = posts
+    .filter((p) => !p.draft)
+    .map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      summary: p.summary,
+      date: p.date,
+      minutes: Math.max(1, Math.round(p.readingTime?.minutes ?? 1)),
+      series: seriesOf(p),
+      translationKey: p.translationKey,
+    }))
+
+  const featured = homePosts.find(
+    (p) => p.translationKey && featuredTranslationKeys.includes(p.translationKey)
+  )
+  const groups = PRIMARY_SERIES.map((s) => ({
+    key: s.key,
+    posts: homePosts.filter((p) => p.series === s.key),
+  })).filter((g) => g.posts.length)
+  const financePost = homePosts.find((p) => p.series === 'personalFinance')
+
   return (
-    <>
-      <div className="divide-y divide-gray-200 dark:divide-gray-700">
-        <div className="space-y-2 pt-6 pb-8 md:space-y-5">
-          <h1 className="text-3xl leading-9 font-extrabold tracking-tight text-gray-900 sm:text-4xl sm:leading-10 md:text-6xl md:leading-14 dark:text-gray-100">
-            {t('latest')}
-          </h1>
-          <p className="text-lg leading-7 text-gray-500 dark:text-gray-400">
-            {siteMetadata.description}
-          </p>
-        </div>
-        <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-          {!posts.length && t('noPosts')}
-          {posts.filter(p => !p.draft).slice(0, MAX_DISPLAY).map((post) => {
-            const { slug, date, title, summary, tags } = post
-            return (
-              <li key={slug} className="py-12">
-                <article>
-                  <div className="space-y-2 xl:grid xl:grid-cols-4 xl:items-baseline xl:space-y-0">
-                    <dl>
-                      <dt className="sr-only">Published on</dt>
-                      <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
-                        <time dateTime={date}>{formatDate(date, siteMetadata.locale)}</time>
-                      </dd>
-                    </dl>
-                    <div className="space-y-5 xl:col-span-3">
-                      <div className="space-y-6">
-                        <div>
-                          <h2 className="text-2xl leading-8 font-bold tracking-tight">
-                            <Link
-                              href={`/blog/${slug}`}
-                              className="text-gray-900 dark:text-gray-100"
-                            >
-                              {title}
-                            </Link>
-                          </h2>
-                          <div className="flex flex-wrap">
-                            {tags.map((tag) => (
-                              <Tag key={tag} text={tag} />
-                            ))}
-                          </div>
-                        </div>
-                        <div className="prose max-w-none text-gray-500 dark:text-gray-400">
-                          {summary}
-                        </div>
-                      </div>
-                      <div className="text-base leading-6 font-medium">
-                        <Link
-                          href={`/blog/${slug}`}
-                          className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
-                          aria-label={`${tc('readMore')}: "${title}"`}
-                        >
-                          {tc('readMore')} &rarr;
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
-      {posts.length > MAX_DISPLAY && (
-        <div className="flex justify-end text-base leading-6 font-medium">
-          <Link
-            href="/blog"
-            className="text-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
-            aria-label={tc('allPosts')}
-          >
-            {tc('allPosts')} &rarr;
-          </Link>
-        </div>
-      )}
-      {siteMetadata.newsletter?.provider && (
-        <div className="flex items-center justify-center pt-4">
-          <NewsletterForm />
-        </div>
-      )}
-    </>
+    <div className="divide-y divide-gray-200 dark:divide-gray-700">
+      <Hero avatar={author?.avatar} />
+      {featured && <FeaturedPost post={featured} />}
+      <SeriesGrid groups={groups} />
+      <LatestPosts posts={homePosts.slice(0, MAX_LATEST)} />
+      <MoreStrip financePost={financePost} />
+      <ContactBlock email={author?.email} linkedin={author?.linkedin} />
+    </div>
   )
 }

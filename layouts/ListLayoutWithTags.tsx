@@ -7,7 +7,7 @@ import { CoreContent } from 'pliny/utils/contentlayer'
 import type { Blog } from 'contentlayer/generated'
 import { Link, usePathname } from '@/i18n/navigation'
 import Tag from '@/components/Tag'
-import siteMetadata from '@/data/siteMetadata'
+import { dateLocale } from '@/lib/dateLocale'
 import tagDataVi from 'app/tag-data.vi.json'
 import tagDataEn from 'app/tag-data.en.json'
 
@@ -113,7 +113,7 @@ export default function ListLayoutWithTags({
                     <li key={t} className="my-3">
                       {decodeURI(pathname.split('/tags/')[1]) === slug(t) ? (
                         <h3 className="text-primary-500 inline px-3 py-2 text-sm font-bold uppercase">
-                          {`${t} (${tagCounts[t]})`}
+                          {`${t.replace(/-/g, ' ')} (${tagCounts[t]})`}
                         </h3>
                       ) : (
                         <Link
@@ -121,7 +121,7 @@ export default function ListLayoutWithTags({
                           className="hover:text-primary-500 dark:hover:text-primary-500 px-3 py-2 text-sm font-medium text-gray-500 uppercase dark:text-gray-300"
                           aria-label={`View posts tagged ${t}`}
                         >
-                          {`${t} (${tagCounts[t]})`}
+                          {`${t.replace(/-/g, ' ')} (${tagCounts[t]})`}
                         </Link>
                       )}
                     </li>
@@ -141,7 +141,7 @@ export default function ListLayoutWithTags({
                         <dt className="sr-only">Published on</dt>
                         <dd className="text-base leading-6 font-medium text-gray-500 dark:text-gray-400">
                           <time dateTime={date} suppressHydrationWarning>
-                            {formatDate(date, siteMetadata.locale)}
+                            {formatDate(date, dateLocale(locale))}
                           </time>
                         </dd>
                       </dl>

@@ -211,11 +211,68 @@
     "tags": "Tags",
     "search": "Search",
     "toggleMenu": "Toggle menu",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyCode": "Copy code",
     "toggleTheme": "Toggle theme"
   },
   "Home": {
     "latest": "Latest",
-    "noPosts": "No posts found."
+    "description": "Notes on automation, Pancake integrations and the things I am building.",
+    "noPosts": "No posts found.",
+    "hero": {
+      "eyebrow": "IT Business Analyst · Pancake",
+      "greeting": "Hi, I'm Định Phan",
+      "intro": "I spent more than eight years as a software technician before moving into business analysis. Here I write about getting the most out of Pancake, syncing Pancake data into your own business systems, and bringing AI into day-to-day operations.",
+      "skills": [
+        "Business analysis",
+        "API & Webhook integration",
+        "Data sync",
+        "AI & MCP"
+      ],
+      "ctaPrimary": "Read the blog",
+      "ctaSecondary": "About me",
+      "avatarAlt": "Định Phan's avatar"
+    },
+    "featured": {
+      "title": "Start here",
+      "readPost": "Read post"
+    },
+    "seriesSection": {
+      "title": "Pancake guides by topic",
+      "disclaimer": "This is a personal blog, not an official Pancake channel.",
+      "postCount": "{count} posts"
+    },
+    "series": {
+      "pancakeApi": {
+        "title": "Pancake API & data sync",
+        "description": "Webhooks plus the conversation, customer and statistics APIs — get Pancake data into your own systems."
+      },
+      "pancakeCrm": {
+        "title": "Pancake CRM",
+        "description": "CRM API, managing Leads/Accounts/Contacts, and AI-powered reporting."
+      },
+      "noCodeAi": {
+        "title": "No-code & AI",
+        "description": "Setup and automation without code: MCP, Botcake, Email, Zalo."
+      },
+      "personalFinance": {
+        "title": "Personal finance",
+        "description": "Monthly personal finance notes."
+      }
+    },
+    "latestSection": {
+      "title": "Latest posts"
+    },
+    "minutesRead": "{minutes} min read",
+    "more": {
+      "title": "Other tools",
+      "finance": "Personal finance"
+    },
+    "contact": {
+      "title": "Get in touch",
+      "description": "Want to talk about a post, Pancake or business analysis? Send an email or reach me on the channels below."
+    }
   },
   "Blog": {
     "title": "All Posts",

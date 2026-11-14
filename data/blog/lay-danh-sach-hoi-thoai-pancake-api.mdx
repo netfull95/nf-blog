@@ -8,8 +8,6 @@ summary: "Hướng dẫn chi tiết cách gọi API GET /pages/{page_id}/convers
 tags: ["Pancake", "API", "Page Access Token", "Conversations", "Pagination", "Pancake developer", "Facebook Messenger", "Tích hợp", "CRM"]
 ---
 
-# Lấy danh sách hội thoại Pancake API — Pagination, filter & sync vào hệ thống
-
 > **TL;DR:** Endpoint chính là `GET https://pages.fm/api/public_api/v2/pages/{page_id}/conversations?page_access_token=...`, trả về **tối đa 60 hội thoại/lần**. Phân trang bằng **cursor** `last_conversation_id` (không phải offset). Hỗ trợ filter `type` (INBOX/COMMENT), `tags`, `post_ids`, `since/until`, `unread_first`, và `order_by` (`updated_at` | `inserted_at`). **Bắt buộc dùng `public_api/v2`** — phiên bản `v1` cho endpoint này đã **deprecated**, code cũ cần migrate sang `v2`.
 
 Sau khi đã biết cách [nhận webhook và gửi tin nhắn qua API Pancake](/blog/pancake-webhook-va-api-gui-tin-nhan), bước tiếp theo trong hầu hết dự án tích hợp là: **đọc danh sách hội thoại** để đồng bộ vào CRM, dashboard, hoặc chạy báo cáo. Bài này tập trung vào endpoint `GET /pages/{page_id}/conversations` — từ basic cho đến pagination, filter, và pattern incremental sync.

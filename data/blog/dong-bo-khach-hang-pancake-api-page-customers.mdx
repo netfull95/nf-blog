@@ -8,8 +8,6 @@ summary: "Hướng dẫn đầy đủ Page Customers API của Pancake — list 
 tags: ["Pancake", "API", "Page Access Token", "Page Customers", "CRM", "Pancake developer", "Facebook Messenger", "Tích hợp", "Customer Sync"]
 ---
 
-# Page Customers API Pancake — Đồng bộ khách hàng vào CRM kèm ghi chú & avatar
-
 > **TL;DR:** Cụm Page Customers gồm 4 endpoint chính trên `https://pages.fm/api/public_api/v1`: `GET /pages/{page_id}/page_customers` (list — **offset-based** với `page_number` + `page_size` max 100), `PUT /pages/{page_id}/page_customers/{id}` (update name/phone/gender/birthday), và `POST | PUT | DELETE /pages/{page_id}/page_customers/{id}/notes` (CRUD ghi chú nội bộ). `since` và `until` **bắt buộc** (đơn vị giây). Bonus: `GET /pages/{page_id}/avatar/{psid}` là endpoint **public**, không cần token — dùng trực tiếp làm `<img src>`.
 
 Sau khi đã biết cách [lấy danh sách hội thoại Pancake](/blog/lay-danh-sach-hoi-thoai-pancake-api), bước tiếp theo trong hầu hết dự án CRM/data warehouse là **đồng bộ thông tin khách hàng** — tên, số điện thoại, giới tính, ghi chú nội bộ — để gắn với pipeline bán hàng, chiến dịch marketing, hoặc báo cáo phân tích.

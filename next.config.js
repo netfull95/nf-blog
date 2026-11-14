@@ -92,7 +92,13 @@ module.exports = () => {
       return [
         {
           source: '/(.*)',
-          headers: securityHeaders,
+          // Dev only: allow embedding in AionUi and keep plain http on localhost.
+          headers:
+            process.env.NODE_ENV === 'development'
+              ? securityHeaders.filter(
+                  (header) => !['X-Frame-Options', 'Strict-Transport-Security'].includes(header.key)
+                )
+              : securityHeaders,
         },
       ]
     },
@@ -105,6 +111,12 @@ module.exports = () => {
         { source: '/en/fbinfo', destination: '/en/tools/fb-info', permanent: false },
         { source: '/splink', destination: '/tools/shopee-shortlink', permanent: false },
         { source: '/en/splink', destination: '/en/tools/shopee-shortlink', permanent: false },
+        // Merged duplicate tag "Tự động hóa" into "Tự động hoá".
+        {
+          source: `/tags/${encodeURI('tự-động-hóa')}`,
+          destination: `/tags/${encodeURI('tự-động-hoá')}`,
+          permanent: true,
+        },
       ]
     },
     // /sale short alias is handled in middleware.ts (next-intl runs before

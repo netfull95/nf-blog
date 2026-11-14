@@ -1,10 +1,10 @@
 import TOCInline from 'pliny/ui/TOCInline'
-import Pre from 'pliny/ui/Pre'
 import BlogNewsletterForm from 'pliny/ui/BlogNewsletterForm'
 import type { MDXComponents } from 'mdx/types'
 import Image from './Image'
 import CustomLink from './Link'
 import TableWrapper from './TableWrapper'
+import CodeBlock from './CodeBlock'
 import Link from 'next/link'
 
 export const components: MDXComponents = {
@@ -18,7 +18,7 @@ export const components: MDXComponents = {
     ) : (
       <CustomLink href={href} {...props} />
     ),
-  pre: Pre,
+  pre: CodeBlock,
   table: TableWrapper,
   BlogNewsletterForm,
 }

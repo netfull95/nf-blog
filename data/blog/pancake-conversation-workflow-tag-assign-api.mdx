@@ -8,8 +8,6 @@ summary: "Detailed guide to the 4 endpoint groups that manage a Pancake conversa
 tags: ["Pancake", "API", "Page Access Token", "Conversations", "CRM Workflow", "Tag", "Assign", "Pancake developer", "Integration"]
 ---
 
-# Pancake Conversation Workflow API — Tags, Assign Staff, Mark Read/Unread
-
 > **TL;DR:** Pancake provides 4 endpoint groups to manage CRM workflow inside a conversation: `POST /conversations/{id}/tags` (add/remove tag), `POST /conversations/{id}/assign` (assign staff to handle), `POST /conversations/{id}/read` and `/unread` (mark as read/unread). Plus 2 lookup endpoints: `GET /pages/{id}/tags` and `GET /pages/{id}/users`. All on `public_api/v1` with `page_access_token`. **Bonus**: Pancake has a **built-in round-robin** feature — configure it once in the dashboard and the system auto-assigns new conversations to staff in rotation, no code needed.
 
 After you know how to [list conversations](/en/blog/get-pancake-conversations-list-api) and [sync customers](/en/blog/pancake-page-customers-api-sync-to-crm) from Pancake, the next step in CRM workflow is **managing each conversation's lifecycle**: classifying with tags, assigning to staff, marking for follow-up. This article covers all 4 workflow endpoints + 2 lookups, with production-grade patterns.

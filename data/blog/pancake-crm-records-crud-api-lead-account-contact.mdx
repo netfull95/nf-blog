@@ -8,8 +8,6 @@ summary: "Hướng dẫn chi tiết 4 endpoint Records của Pancake CRM API —
 tags: ["Pancake CRM", "API", "Records", "Lead", "Contact", "Account", "Workspace", "api_key", "Pancake developer", "CRUD"]
 ---
 
-# Pancake CRM Records CRUD API — Quản lý lead / account / contact
-
 > **TL;DR:** Pancake CRM cung cấp **4 endpoint Records** cho 3 table types `lead` / `account` / `contact`: `GET /workspaces/{ws}/{table}/records` (list với filter JSON + cursor pagination), `POST /workspaces/{ws}/{table}/records` (**upsert** — có `id` = update, không `id` = create, KHÔNG có endpoint create/update riêng), `DELETE /workspaces/{ws}/{table}/records?record_ids[]=...` (bulk delete), và `GET /workspaces/{ws}/record/{id}` (single — URL pattern khác list). Filter hỗ trợ **9 operators** và logic AND/OR. Lỗi đặc biệt **422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** — không update được lead đã canceled/converted/merged.
 
 Sau khi đã setup [Pancake CRM API + api_key](/blog/gioi-thieu-pancake-crm-api), endpoint dùng nhiều nhất là **Records** — nơi quản lý lead/contact/account của workspace. Bài này cover đầy đủ 4 endpoint CRUD, filter JSON syntax đầy đủ, và những pitfall thường gặp khi mới integrate.
