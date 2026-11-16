@@ -5,7 +5,7 @@ lastmod: "2026-06-23"
 language: "en"
 translationKey: "pancake-statistics"
 summary: "Full reference for the 7 Statistics endpoints in the Pancake chat API — page, user (agent KPIs), tag, engagement, ads + ads campaign, new customer. Includes a critical warning about the 3 DIFFERENT date param formats across endpoints (since/until Unix seconds, date_range string DD/MM/YYYY HH:MM:SS, date_range string DD/MM/YYYY) — the #1 pitfall when building BI dashboards or scheduled syncs."
-tags: ["Pancake", "API", "Statistics", "Page Access Token", "Reporting", "Analytics", "BI", "KPI", "Ads", "Pancake developer"]
+tags: ["Pancake", "API", "Reporting"]
 ---
 
 > **TL;DR:** Pancake exposes **7 Statistics endpoints** under `https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/...` for reporting: **`pages`** (page overview by hour), **`users`** (agent KPIs), **`tags`** (per-tag breakdown), **`customer_engagements`** (engagement chart), **`pages_campaigns`** + **`ads`** (ad reporting), **`page_customers`** (new customer growth). All require a `page_access_token`. **Critical**: Pancake uses **3 different date param formats** across endpoints (`since`/`until` Unix seconds, `date_range` string `"DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS"`, `date_range` string `"DD/MM/YYYY - DD/MM/YYYY"`) — wrong format = empty response or 400 with no clear error message.

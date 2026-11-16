@@ -241,7 +241,8 @@
     "seriesSection": {
       "title": "Pancake guides by topic",
       "disclaimer": "This is a personal blog, not an official Pancake channel.",
-      "postCount": "{count} posts"
+      "postCount": "{count} posts",
+      "viewAll": "View all"
     },
     "series": {
       "pancakeApi": {
@@ -294,11 +295,26 @@
     "backToBlog": "← Back to the blog",
     "backToBlogAria": "Back to the blog",
     "discussOnTwitter": "Discuss on Twitter",
-    "viewOnGithub": "View on GitHub"
+    "viewOnGithub": "View on GitHub",
+    "minutesRead": "{minutes} min read",
+    "toc": "On this page",
+    "readTranslation": "Read in Vietnamese",
+    "translationLang": "Tiếng Việt",
+    "inSeries": "More in {series}",
+    "seriesAll": "See the whole series",
+    "disclaimer": "This is a personal blog, not an official Pancake channel. Menu names and features may change between versions."
   },
   "Locale": {
     "switchTo": "Switch language",
     "vi": "Tiếng Việt",
     "en": "English"
+  },
+  "Series": {
+    "metaDescription": "Posts in the {series} series on netFull's Blog.",
+    "count": "{count} posts",
+    "back": "← Back to home"
+  },
+  "Search": {
+    "section": "Posts"
   }
 }

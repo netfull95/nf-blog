@@ -6,7 +6,7 @@ import { Be_Vietnam_Pro } from 'next/font/google'
 import { Analytics, AnalyticsConfig } from 'pliny/analytics'
 import { Analytics as VercelAnalytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import { SearchProvider, SearchConfig } from 'pliny/search'
+import LocaleSearchProvider from '@/components/LocaleSearchProvider'
 import Header from '@/components/Header'
 import SectionContainer from '@/components/SectionContainer'
 import Footer from '@/components/Footer'
@@ -125,10 +125,10 @@ export default async function RootLayout({
             <VercelAnalytics />
             <SpeedInsights />
             <SectionContainer>
-              <SearchProvider searchConfig={siteMetadata.search as SearchConfig}>
+              <LocaleSearchProvider>
                 {!hideChrome && <Header />}
                 <main className="mb-auto">{children}</main>
-              </SearchProvider>
+              </LocaleSearchProvider>
               <Footer />
             </SectionContainer>
           </ThemeProviders>

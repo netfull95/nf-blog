@@ -5,7 +5,7 @@ lastmod: "2026-06-23"
 language: "en"
 translationKey: "pancake-crm-records"
 summary: "Complete reference for the 4 Records endpoints in the Pancake CRM API — list (with powerful JSON filter + cursor pagination), upsert (id present = update, omit = create), bulk delete, get single. Supports the 3 table types lead/account/contact, with 9 filter operators and common pitfalls like the 422 LEAD_CANNOT_UPDATE_FROM_CANCEL error."
-tags: ["Pancake CRM", "API", "Records", "Lead", "Contact", "Account", "Workspace", "api_key", "Pancake developer", "CRUD"]
+tags: ["Pancake CRM", "API"]
 ---
 
 > **TL;DR:** Pancake CRM exposes **4 Records endpoints** for the 3 table types `lead` / `account` / `contact`: `GET /workspaces/{ws}/{table}/records` (list with JSON filter + cursor pagination), `POST /workspaces/{ws}/{table}/records` (**upsert** — `id` present = update, `id` omitted = create; there is NO separate create/update endpoint), `DELETE /workspaces/{ws}/{table}/records?record_ids[]=...` (bulk delete), and `GET /workspaces/{ws}/record/{id}` (single — different URL pattern from list). The filter supports **9 operators** and AND/OR logic. Watch out for the special **422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** error — you can't update a lead that has been canceled/converted/merged.

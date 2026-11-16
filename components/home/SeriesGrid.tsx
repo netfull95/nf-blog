@@ -1,6 +1,6 @@
 import Link from '@/components/Link'
 import { getTranslations } from 'next-intl/server'
-import type { SeriesKey } from '@/data/series'
+import { seriesSlug, type SeriesKey } from '@/data/series'
 import type { HomePost } from './types'
 
 const MAX_POSTS_PER_SERIES = 4
@@ -48,6 +48,12 @@ export default async function SeriesGrid({
                 </li>
               ))}
             </ul>
+            <Link
+              href={`/series/${seriesSlug(key)}`}
+              className="text-primary-600 hover:text-primary-700 dark:text-primary-400 mt-auto pt-4 text-sm font-medium"
+            >
+              {t('seriesSection.viewAll')} &rarr;
+            </Link>
           </div>
         ))}
       </div>

@@ -1,4 +1,4 @@
-![tailwind-nextjs-banner](/public/static/images/twitter-card.png)
+![netFull blog banner](/public/static/images/nf-blog-banner-260506.jpg)
 
 # Tailwind Nextjs Starter Blog
 

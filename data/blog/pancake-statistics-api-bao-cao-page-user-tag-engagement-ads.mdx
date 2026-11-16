@@ -5,7 +5,7 @@ lastmod: "2026-06-23"
 language: "vi"
 translationKey: "pancake-statistics"
 summary: "Hướng dẫn chi tiết 7 endpoint Statistics trên Pancake API — page, user (KPI nhân viên), tag, engagement, ads + ads campaign, new customer. Kèm cảnh báo về 3 FORMAT DATE PARAMS khác nhau giữa các endpoint (since/until Unix sec, date_range string DD/MM/YYYY HH:MM:SS, date_range string DD/MM/YYYY) — đây là pitfall thường gặp khi build BI dashboard hoặc cron sync."
-tags: ["Pancake", "API", "Statistics", "Page Access Token", "Báo cáo", "Analytics", "BI", "KPI", "Ads", "Pancake developer"]
+tags: ["Pancake", "API", "Báo cáo"]
 ---
 
 > **TL;DR:** Pancake cung cấp **7 endpoint Statistics** trên `https://pages.fm/api/public_api/v1/pages/{page_id}/statistics/...` để báo cáo: **`pages`** (tổng quan page theo giờ), **`users`** (KPI nhân viên), **`tags`** (thống kê theo tag), **`customer_engagements`** (engagement chart), **`pages_campaigns`** + **`ads`** (quảng cáo), **`page_customers`** (new customer growth). Tất cả cần `page_access_token`. **Quan trọng**: Pancake dùng **3 format date params khác nhau** giữa các endpoint (`since`/`until` Unix sec, `date_range` string `"DD/MM/YYYY HH:MM:SS - DD/MM/YYYY HH:MM:SS"`, `date_range` string `"DD/MM/YYYY - DD/MM/YYYY"`) — sai format = response rỗng hoặc 400, nhớ check kỹ.

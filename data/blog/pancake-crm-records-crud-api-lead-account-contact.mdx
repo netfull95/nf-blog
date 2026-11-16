@@ -5,7 +5,7 @@ lastmod: "2026-06-23"
 language: "vi"
 translationKey: "pancake-crm-records"
 summary: "Hướng dẫn chi tiết 4 endpoint Records của Pancake CRM API — list (với filter JSON mạnh + cursor pagination), upsert (id present = update, omit = create), bulk delete, get single. Hỗ trợ 3 table types lead/account/contact, kèm 9 filter operators và những pitfall thường gặp như lỗi 422 LEAD_CANNOT_UPDATE_FROM_CANCEL."
-tags: ["Pancake CRM", "API", "Records", "Lead", "Contact", "Account", "Workspace", "api_key", "Pancake developer", "CRUD"]
+tags: ["Pancake CRM", "API"]
 ---
 
 > **TL;DR:** Pancake CRM cung cấp **4 endpoint Records** cho 3 table types `lead` / `account` / `contact`: `GET /workspaces/{ws}/{table}/records` (list với filter JSON + cursor pagination), `POST /workspaces/{ws}/{table}/records` (**upsert** — có `id` = update, không `id` = create, KHÔNG có endpoint create/update riêng), `DELETE /workspaces/{ws}/{table}/records?record_ids[]=...` (bulk delete), và `GET /workspaces/{ws}/record/{id}` (single — URL pattern khác list). Filter hỗ trợ **9 operators** và logic AND/OR. Lỗi đặc biệt **422 `LEAD_CANNOT_UPDATE_FROM_CANCEL`** — không update được lead đã canceled/converted/merged.

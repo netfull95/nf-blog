@@ -5,7 +5,7 @@ lastmod: "2026-05-28"
 language: "en"
 translationKey: "pancake-page-customers"
 summary: "Complete guide to the Pancake Page Customers API — listing customers with offset pagination, updating profiles, CRUD operations on internal notes, and the public no-auth avatar endpoint. Includes CRM sync patterns (HubSpot/Salesforce/Postgres), delta sync, schema suggestions, and warnings about timestamp unit pitfalls."
-tags: ["Pancake", "API", "Page Access Token", "Page Customers", "CRM", "Pancake developer", "Facebook Messenger", "Integration", "Customer Sync"]
+tags: ["Pancake", "API", "Pancake CRM", "Facebook Messenger", "Integration"]
 ---
 
 > **TL;DR:** The Page Customers cluster has 4 main endpoints on `https://pages.fm/api/public_api/v1`: `GET /pages/{page_id}/page_customers` (list — **offset-based** with `page_number` + `page_size`, max 100), `PUT /pages/{page_id}/page_customers/{id}` (update name/phone/gender/birthday), and `POST | PUT | DELETE /pages/{page_id}/page_customers/{id}/notes` (CRUD internal notes). `since` and `until` are **required** (in seconds). Bonus: `GET /pages/{page_id}/avatar/{psid}` is a **public** endpoint with no token required — usable directly as an `<img src>`.

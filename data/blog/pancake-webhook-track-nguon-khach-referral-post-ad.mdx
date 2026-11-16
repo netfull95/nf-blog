@@ -5,7 +5,7 @@ lastmod: "2026-07-15"
 language: "vi"
 translationKey: "pancake-conversation-source-tracking"
 summary: "Khách nhắn vào Facebook Page qua Messenger nhưng đội marketing không biết khách đến từ quảng cáo nào, từ đường link nào — mất khả năng đo hiệu quả chiến dịch. Bài này chỉ ra 3 cách khách vào Messenger của Fanpage (quảng cáo Click-to-Messenger, đường link m.me có tham số ref, và tin nhắn tự nhiên), map với từng trường dữ liệu trong webhook Pancake, cùng 2 phương án đo nguồn: tin cậy trực tiếp webhook và chủ động cài ref vào mọi đường link m.me. Nêu rõ vì sao không nên dựa vào Get Conversations API để suy ra nguồn cho hội thoại inbox."
-tags: ["Pancake", "Webhook", "API", "Facebook Messenger", "Ads", "Tích hợp", "Pancake developer"]
+tags: ["Pancake", "Webhook", "API", "Facebook Messenger", "Tích hợp"]
 ---
 
 > **TL;DR:** Bài này nói riêng cho **Fanpage Facebook kết nối Pancake** (không áp dụng cho Zalo, TikTok, Instagram Direct — mỗi nền tảng có cơ chế riêng). Khi khách nhắn tin vào Messenger của Fanpage, Pancake webhook có thể chứa trường **`referral`** (khi khách vào từ link `m.me` có tham số `ref`) hoặc trường có **`ad_id`** (khi khách vào từ quảng cáo Click-to-Messenger). Nếu khách tự tìm Fanpage và nhắn thẳng thì webhook **không chứa thông tin nguồn** — không có cách nào biết. Cách chủ động nhất để phủ được nhiều kênh nhất là **luôn dùng link `m.me/tenpage?ref=...`** ở mọi nơi ngoài Facebook (website, email, QR code, bio TikTok/Zalo…).

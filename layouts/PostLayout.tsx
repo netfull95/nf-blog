@@ -11,10 +11,11 @@ import siteMetadata from '@/data/siteMetadata'
 import ScrollTopAndComment from '@/components/ScrollTopAndComment'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { dateLocale } from '@/lib/dateLocale'
+import TableOfContents, { type TocItem } from '@/components/TableOfContents'
+import { pancakeSeries } from '@/data/series'
+import type { PostSeries, PostTranslation } from './postExtras'
 
 const editUrl = (path) => `${siteMetadata.siteRepo}/blob/main/data/${path}`
-const discussUrl = (path) =>
-  `https://mobile.twitter.com/search?q=${encodeURIComponent(`${siteMetadata.siteUrl}/${path}`)}`
 
 const postDateTemplate: Intl.DateTimeFormatOptions = {
   weekday: 'long',
@@ -28,6 +29,8 @@ interface LayoutProps {
   authorDetails: CoreContent<Authors>[]
   next?: { path: string; title: string }
   prev?: { path: string; title: string }
+  translation?: PostTranslation
+  series?: PostSeries
   children: ReactNode
 }
 
@@ -36,9 +39,14 @@ export default async function PostLayout({
   authorDetails,
   next,
   prev,
+  translation,
+  series,
   children,
 }: LayoutProps) {
-  const { filePath, path, slug, date, title, tags } = content
+  const { filePath, path, slug, date, title, tags, readingTime } = content
+  const toc = (content.toc ?? []) as TocItem[]
+  const minutes = Math.max(1, Math.round(readingTime?.minutes ?? 1))
+  const th = await getTranslations('Home')
   const basePath = path.split('/')[0]
   const t = await getTranslations('Post')
   const locale = dateLocale(await getLocale())
@@ -57,12 +65,25 @@ export default async function PostLayout({
                     <time dateTime={date}>
                       {new Date(date).toLocaleDateString(locale, postDateTemplate)}
                     </time>
+                    <span aria-hidden="true">{` · `}</span>
+                    <span>{t('minutesRead', { minutes })}</span>
                   </dd>
                 </div>
               </dl>
               <div>
                 <PageTitle>{title}</PageTitle>
               </div>
+              {translation && (
+                <p className="pt-3 text-sm">
+                  <Link
+                    href={`/${translation.locale}/blog/${translation.slug}`}
+                    hrefLang={translation.locale}
+                    className="text-primary-600 hover:text-primary-700 dark:text-primary-400 font-medium"
+                  >
+                    {t('readTranslation')} &rarr;
+                  </Link>
+                </p>
+              )}
             </div>
           </header>
           <div className="grid-rows-[auto_1fr] divide-y divide-gray-200 pb-8 xl:grid xl:grid-cols-4 xl:gap-x-6 xl:divide-y-0 dark:divide-gray-700">
@@ -104,12 +125,50 @@ export default async function PostLayout({
               </dd>
             </dl>
             <div className="divide-y divide-gray-200 xl:col-span-3 xl:row-span-2 xl:pb-0 dark:divide-gray-700">
-              <div className="prose dark:prose-invert max-w-none pt-10 pb-8">{children}</div>
+              <div className="pt-10 pb-8">
+                {series && pancakeSeries.includes(series.key) && (
+                  <p className="mb-6 rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-400">
+                    {t('disclaimer')}
+                  </p>
+                )}
+                {toc.length > 0 && (
+                  <details className="mb-8 rounded-lg border border-gray-200 px-4 py-3 xl:hidden dark:border-gray-700">
+                    <summary className="cursor-pointer text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      {t('toc')}
+                    </summary>
+                    <div className="pt-3">
+                      <TableOfContents toc={toc} title={t('toc')} />
+                    </div>
+                  </details>
+                )}
+                <div className="prose dark:prose-invert max-w-none">{children}</div>
+              </div>
+              {series && series.posts.length > 0 && (
+                <div className="py-8">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                    {t('inSeries', { series: th(`series.${series.key}.title`) })}
+                  </h2>
+                  <ul className="mt-4 space-y-2">
+                    {series.posts.map((p) => (
+                      <li key={p.slug}>
+                        <Link
+                          href={`/blog/${p.slug}`}
+                          className="hover:text-primary-600 dark:hover:text-primary-400 text-gray-800 dark:text-gray-200"
+                        >
+                          {p.title}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    href={`/series/${series.slug}`}
+                    className="text-primary-600 hover:text-primary-700 dark:text-primary-400 mt-4 inline-block text-sm font-medium"
+                  >
+                    {t('seriesAll')} &rarr;
+                  </Link>
+                </div>
+              )}
               <div className="pt-6 pb-6 text-sm text-gray-700 dark:text-gray-300">
-                <Link href={discussUrl(path)} rel="nofollow">
-                  {t('discussOnTwitter')}
-                </Link>
-                {` • `}
                 <Link href={editUrl(filePath)}>{t('viewOnGithub')}</Link>
               </div>
               {siteMetadata.comments && (
@@ -169,6 +228,11 @@ export default async function PostLayout({
                   {t('backToBlog')}
                 </Link>
               </div>
+              {toc.length > 0 && (
+                <div className="hidden pt-8 xl:sticky xl:top-24 xl:block xl:max-h-[calc(100vh-8rem)] xl:overflow-y-auto">
+                  <TableOfContents toc={toc} title={t('toc')} />
+                </div>
+              )}
             </footer>
           </div>
         </div>

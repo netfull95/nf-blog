@@ -5,7 +5,7 @@ lastmod: "2026-06-17"
 language: "vi"
 translationKey: "intro-pancake-crm"
 summary: "Pancake CRM là một sản phẩm trong hệ sinh thái Pancake — chức năng khác hoàn toàn với Pancake chat đa kênh. Base URL crm.pancake.vn/api, xác thực bằng api_key per-workspace, quản lý lead/account/contact/order/ticket. Bài này định vị CRM trong suite Pancake, hướng dẫn lấy api_key, test connection và tổng quan 6 nhóm endpoint + webhook."
-tags: ["Pancake", "Pancake CRM", "API", "Workspace", "api_key", "Lead", "Contact", "Order", "Ticket", "Pancake developer", "Tích hợp"]
+tags: ["Pancake", "Pancake CRM", "API", "Tích hợp"]
 ---
 
 > **TL;DR:** **Pancake CRM** là **một sản phẩm trong hệ sinh thái Pancake** — bên cạnh Pancake chat đa kênh (quản lý hội thoại FB/IG/Zalo), CRM phục vụ flow **sales pipeline + customer management** với tính năng hoàn toàn khác. Base URL `https://crm.pancake.vn/api`, xác thực bằng **`api_key`** truyền trong query param (KHÔNG phải Bearer header, KHÔNG phải `page_access_token` của Page). Multi-tenant theo **workspace**. Cung cấp 6 nhóm endpoint: **Records** (lead/account/contact), **Orders**, **Tickets**, **Sources**, **Tags** (CRM-scope), và **Webhook** realtime cho `record` event. Đây là pillar đầu tiên của cluster Pancake CRM — các bài sau sẽ cover từng endpoint sâu hơn.

@@ -241,7 +241,8 @@
     "seriesSection": {
       "title": "Hướng dẫn Pancake theo chủ đề",
       "disclaimer": "Đây là blog cá nhân, không phải kênh chính thức của Pancake.",
-      "postCount": "{count} bài"
+      "postCount": "{count} bài",
+      "viewAll": "Xem tất cả"
     },
     "series": {
       "pancakeApi": {
@@ -294,11 +295,26 @@
     "backToBlog": "← Quay lại danh sách bài viết",
     "backToBlogAria": "Quay lại danh sách bài viết",
     "discussOnTwitter": "Thảo luận trên Twitter",
-    "viewOnGithub": "Xem trên GitHub"
+    "viewOnGithub": "Xem trên GitHub",
+    "minutesRead": "{minutes} phút đọc",
+    "toc": "Mục lục",
+    "readTranslation": "Đọc bản tiếng Anh",
+    "translationLang": "English",
+    "inSeries": "Cùng series: {series}",
+    "seriesAll": "Xem cả series",
+    "disclaimer": "Đây là blog cá nhân, không phải kênh chính thức của Pancake. Tên menu và tính năng có thể thay đổi theo phiên bản."
   },
   "Locale": {
     "switchTo": "Chuyển ngôn ngữ",
     "vi": "Tiếng Việt",
     "en": "English"
+  },
+  "Series": {
+    "metaDescription": "Các bài viết trong series {series} trên netFull's Blog.",
+    "count": "{count} bài",
+    "back": "← Về trang chủ"
+  },
+  "Search": {
+    "section": "Bài viết"
   }
 }

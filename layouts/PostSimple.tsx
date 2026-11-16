@@ -11,11 +11,15 @@ import ScrollTopAndComment from '@/components/ScrollTopAndComment'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { dateLocale } from '@/lib/dateLocale'
 
+import type { PostSeries, PostTranslation } from './postExtras'
+
 interface LayoutProps {
   content: CoreContent<Blog>
   children: ReactNode
   next?: { path: string; title: string }
   prev?: { path: string; title: string }
+  translation?: PostTranslation
+  series?: PostSeries
 }
 
 export default async function PostLayout({ content, next, prev, children }: LayoutProps) {

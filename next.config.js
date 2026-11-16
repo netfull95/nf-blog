@@ -1,3 +1,4 @@
+const tagRedirects = require('./data/tagRedirects')
 const { withContentlayer } = require('next-contentlayer2')
 const createNextIntlPlugin = require('next-intl/plugin')
 
@@ -111,6 +112,17 @@ module.exports = () => {
         { source: '/en/fbinfo', destination: '/en/tools/fb-info', permanent: false },
         { source: '/splink', destination: '/tools/shopee-shortlink', permanent: false },
         { source: '/en/splink', destination: '/en/tools/shopee-shortlink', permanent: false },
+        // Tags merged or removed during the 2026-11-16 consolidation.
+        ...Object.entries(tagRedirects).flatMap(([locale, map]) =>
+          Object.entries(map).map(([from, to]) => {
+            const prefix = locale === 'vi' ? '' : `/${locale}`
+            return {
+              source: `${prefix}/tags/${encodeURI(from)}`,
+              destination: to ? `${prefix}/tags/${encodeURI(to)}` : `${prefix}/tags`,
+              permanent: true,
+            }
+          })
+        ),
         // Merged duplicate tag "Tự động hóa" into "Tự động hoá".
         {
           source: `/tags/${encodeURI('tự-động-hóa')}`,

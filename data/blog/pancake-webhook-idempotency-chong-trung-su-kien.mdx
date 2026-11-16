@@ -5,7 +5,7 @@ lastmod: "2026-07-15"
 language: "vi"
 translationKey: "pancake-webhook-idempotency"
 summary: "Khi tích hợp webhook Pancake vào chatbot hoặc CRM, cùng 1 tin nhắn có thể được đẩy về nhiều lần do retry của Pancake hoặc do server bạn timeout. Bài này giải đáp 4 câu hỏi kinh điển: field nào là ID duy nhất và ổn định của event, retry có giữ nguyên ID không, 2 tin cùng nội dung có ID khác nhau không, ID unique toàn hệ thống hay chỉ trong 1 page — kèm 3 pattern chống trùng ở tầng ứng dụng (Redis SETNX, PostgreSQL UNIQUE, in-memory LRU) với code Node.js chạy được ngay."
-tags: ["Pancake", "Webhook", "API", "Chatbot", "Tự động hoá", "Tích hợp", "Pancake developer"]
+tags: ["Pancake", "Webhook", "API", "AI", "Tự động hoá", "Tích hợp"]
 ---
 
 > **TL;DR:** Pancake sẽ **retry webhook** nếu server bạn trả về lỗi hoặc timeout — nghĩa là **cùng 1 tin nhắn có thể tới endpoint của bạn nhiều lần**. Nếu chatbot không có cơ chế idempotency, khách sẽ nhận **reply trùng**, đơn hàng sẽ bị **tạo 2 lần**, CRM sẽ có **lead trùng**. Field an toàn nhất để làm khóa idempotency là **`message.id`** (mỗi tin nhắn có ID duy nhất, ổn định qua retry). Bài này trình bày 3 pattern chống trùng tương ứng với 3 quy mô traffic: **Redis SETNX** (khuyến nghị cho production), **PostgreSQL UNIQUE constraint** (khi đã có DB), **in-memory LRU** (cho service nhỏ, single instance).

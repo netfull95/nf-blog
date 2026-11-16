@@ -5,7 +5,7 @@ lastmod: "2026-06-09"
 language: "vi"
 translationKey: "pancake-conversation-workflow"
 summary: "Hướng dẫn chi tiết 4 nhóm endpoint quản lý vòng đời hội thoại Pancake — gắn/gỡ tag, assign nhân viên xử lý, mark read/unread. Kèm 2 endpoint lookup (tags + users), pattern auto-tag theo keyword, round-robin assign, và lưu ý về tính năng round_robin_users built-in của Pancake."
-tags: ["Pancake", "API", "Page Access Token", "Conversations", "CRM Workflow", "Tag", "Assign", "Pancake developer", "Tích hợp"]
+tags: ["Pancake", "API", "Pancake CRM", "CSKH", "Tích hợp"]
 ---
 
 > **TL;DR:** Pancake cung cấp 4 nhóm endpoint quản lý workflow CRM trong conversation: `POST /conversations/{id}/tags` (add/remove tag), `POST /conversations/{id}/assign` (assign nhân viên xử lý), `POST /conversations/{id}/read` và `/unread` (đánh dấu đã/chưa đọc). Kèm 2 endpoint lookup: `GET /pages/{id}/tags` và `GET /pages/{id}/users`. Tất cả ở `public_api/v1`, dùng `page_access_token`. **Bonus**: Pancake có tính năng **round-robin tự động** built-in — bạn config 1 lần ở dashboard, hệ thống sẽ tự assign hội thoại mới cho nhân viên theo lượt, không cần tự code.

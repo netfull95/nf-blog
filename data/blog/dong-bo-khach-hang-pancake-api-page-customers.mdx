@@ -5,7 +5,7 @@ lastmod: "2026-05-28"
 language: "vi"
 translationKey: "pancake-page-customers"
 summary: "Hướng dẫn đầy đủ Page Customers API của Pancake — list khách hàng với offset pagination, update thông tin, CRUD ghi chú nội bộ, và endpoint avatar public không cần token. Kèm pattern sync vào CRM (HubSpot/Salesforce/Postgres) với delta sync, schema gợi ý và cảnh báo các pitfall về đơn vị thời gian."
-tags: ["Pancake", "API", "Page Access Token", "Page Customers", "CRM", "Pancake developer", "Facebook Messenger", "Tích hợp", "Customer Sync"]
+tags: ["Pancake", "API", "Pancake CRM", "Facebook Messenger", "Tích hợp"]
 ---
 
 > **TL;DR:** Cụm Page Customers gồm 4 endpoint chính trên `https://pages.fm/api/public_api/v1`: `GET /pages/{page_id}/page_customers` (list — **offset-based** với `page_number` + `page_size` max 100), `PUT /pages/{page_id}/page_customers/{id}` (update name/phone/gender/birthday), và `POST | PUT | DELETE /pages/{page_id}/page_customers/{id}/notes` (CRUD ghi chú nội bộ). `since` và `until` **bắt buộc** (đơn vị giây). Bonus: `GET /pages/{page_id}/avatar/{psid}` là endpoint **public**, không cần token — dùng trực tiếp làm `<img src>`.

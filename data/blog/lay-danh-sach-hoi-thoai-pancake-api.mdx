@@ -5,7 +5,7 @@ lastmod: "2026-05-28"
 language: "vi"
 translationKey: "pancake-list-conversations"
 summary: "Hướng dẫn chi tiết cách gọi API GET /pages/{page_id}/conversations để lấy danh sách hội thoại Pancake — từ endpoint cơ bản, pagination bằng last_conversation_id, filter theo type/tags/post/thời gian, đến best practice sync số lượng lớn vào CRM."
-tags: ["Pancake", "API", "Page Access Token", "Conversations", "Pagination", "Pancake developer", "Facebook Messenger", "Tích hợp", "CRM"]
+tags: ["Pancake", "API", "Facebook Messenger", "Tích hợp", "Pancake CRM"]
 ---
 
 > **TL;DR:** Endpoint chính là `GET https://pages.fm/api/public_api/v2/pages/{page_id}/conversations?page_access_token=...`, trả về **tối đa 60 hội thoại/lần**. Phân trang bằng **cursor** `last_conversation_id` (không phải offset). Hỗ trợ filter `type` (INBOX/COMMENT), `tags`, `post_ids`, `since/until`, `unread_first`, và `order_by` (`updated_at` | `inserted_at`). **Bắt buộc dùng `public_api/v2`** — phiên bản `v1` cho endpoint này đã **deprecated**, code cũ cần migrate sang `v2`.

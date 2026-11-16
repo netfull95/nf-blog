@@ -5,7 +5,7 @@ lastmod: "2026-05-28"
 language: "en"
 translationKey: "pancake-list-conversations"
 summary: "Complete guide to the Pancake GET /pages/{page_id}/conversations endpoint — from basic calls and cursor pagination with last_conversation_id, to filtering by type/tags/post/timestamp, and best practices for syncing large volumes into a CRM."
-tags: ["Pancake", "API", "Page Access Token", "Conversations", "Pagination", "Pancake developer", "Facebook Messenger", "Integration", "CRM"]
+tags: ["Pancake", "API", "Facebook Messenger", "Integration", "Pancake CRM"]
 ---
 
 > **TL;DR:** The main endpoint is `GET https://pages.fm/api/public_api/v2/pages/{page_id}/conversations?page_access_token=...`, returning **up to 60 conversations per call**. Pagination uses a **cursor** (`last_conversation_id`) — not offset. Supports filtering by `type` (INBOX/COMMENT), `tags`, `post_ids`, `since/until`, `unread_first`, and `order_by` (`updated_at` | `inserted_at`). **You must use `public_api/v2`** — the `v1` version of this endpoint is **deprecated** and existing code should migrate to `v2`.

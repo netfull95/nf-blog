@@ -7,6 +7,8 @@ export type SeriesKey = 'pancakeApi' | 'pancakeCrm' | 'noCodeAi' | 'personalFina
 
 export type SeriesDefinition = {
   key: SeriesKey
+  // URL segment for /series/<slug>
+  slug: string
   translationKeys?: string[]
   slugPrefixes?: string[]
 }
@@ -14,6 +16,7 @@ export type SeriesDefinition = {
 export const series: SeriesDefinition[] = [
   {
     key: 'pancakeApi',
+    slug: 'pancake-api',
     translationKeys: [
       'pancake-extraction-options',
       'pancake-webhook-api',
@@ -27,10 +30,12 @@ export const series: SeriesDefinition[] = [
   },
   {
     key: 'pancakeCrm',
+    slug: 'pancake-crm',
     translationKeys: ['intro-pancake-crm', 'pancake-crm-records', 'pancake-crm-mcp-reporting'],
   },
   {
     key: 'noCodeAi',
+    slug: 'no-code-ai',
     translationKeys: [
       'intro-pancake',
       'pancake-api-mcp-guide',
@@ -42,9 +47,13 @@ export const series: SeriesDefinition[] = [
   },
   {
     key: 'personalFinance',
+    slug: 'personal-finance',
     slugPrefixes: ['toan-canh-tai-chinh-ca-nhan'],
   },
 ]
+
+// Series that get the "personal blog, not an official Pancake channel" note.
+export const pancakeSeries: SeriesKey[] = ['pancakeApi', 'pancakeCrm', 'noCodeAi']
 
 // Pinned on the home page under "Start here".
 export const featuredTranslationKeys = ['pancake-extraction-options']
@@ -55,4 +64,12 @@ export function seriesOf(post: { translationKey?: string; slug: string }): Serie
       (post.translationKey && s.translationKeys?.includes(post.translationKey)) ||
       s.slugPrefixes?.some((p) => post.slug.startsWith(p))
   )?.key
+}
+
+export function seriesBySlug(slug: string) {
+  return series.find((s) => s.slug === slug)
+}
+
+export function seriesSlug(key: SeriesKey) {
+  return series.find((s) => s.key === key)?.slug
 }

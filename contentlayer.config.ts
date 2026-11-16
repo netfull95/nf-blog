@@ -115,7 +115,18 @@ function createSearchIndex(allBlogs) {
   ) {
     writeFileSync(
       `public/${path.basename(siteMetadata.search.kbarConfig.searchDocumentsPath)}`,
-      JSON.stringify(allCoreContent(sortPosts(allBlogs)))
+      // Only the fields LocaleSearchProvider needs, to keep the file small.
+      JSON.stringify(
+        allCoreContent(sortPosts(allBlogs))
+          .filter((post) => !(isProduction && post.draft === true))
+          .map(({ slug, title, summary, date, language }) => ({
+            slug,
+            title,
+            summary,
+            date,
+            language: language || 'vi',
+          }))
+      )
     )
     console.log('Local search index generated...')
   }

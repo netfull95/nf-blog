@@ -3,6 +3,7 @@ import { allBlogs } from 'contentlayer/generated'
 import { routing } from '@/i18n/routing'
 import { tools } from '@/data/toolsData'
 import { localizedUrl, pageLanguages, postLanguages } from '@/lib/seo'
+import { series, seriesOf } from '@/data/series'
 
 export const dynamic = 'force-static'
 
@@ -38,5 +39,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
       }
     })
 
-  return [...staticRoutes, ...blogRoutes]
+  // Series pages — only in locales that have posts for the series.
+  const seriesRoutes: MetadataRoute.Sitemap = []
+  for (const s of series) {
+    const path = `/series/${s.slug}`
+    const locales = routing.locales.filter((locale) =>
+      allBlogs.some(
+        (post) => !post.draft && (post.language ?? 'vi') === locale && seriesOf(post) === s.key
+      )
+    )
+    for (const locale of locales) {
+      seriesRoutes.push({
+        url: localizedUrl(path, locale),
+        ...(locales.length === routing.locales.length
+          ? { alternates: { languages: pageLanguages(path) } }
+          : {}),
+      })
+    }
+  }
+
+  return [...staticRoutes, ...seriesRoutes, ...blogRoutes]
 }
