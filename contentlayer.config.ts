@@ -153,6 +153,16 @@ export const Blog = defineDocumentType(() => ({
   },
   computedFields: {
     ...computedFields,
+    // Thumbnail for listings: frontmatter `images[0]`, else the first local or
+    // Pancake CDN image in the body. Home falls back to the series illustration.
+    cover: {
+      type: 'string',
+      resolve: (doc) =>
+        doc.images?.[0] ??
+        doc.body.raw.match(
+          /(?:!\[[^\]]*\]\(|src=["'])(\/static\/images\/[^\s)"']+|https:\/\/(?:statics|content)\.pancake\.vn\/[^\s)"']+)/
+        )?.[1],
+    },
     structuredData: {
       type: 'json',
       resolve: (doc) => {

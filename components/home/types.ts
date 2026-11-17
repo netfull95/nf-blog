@@ -8,4 +8,5 @@ export type HomePost = {
   minutes: number
   series?: SeriesKey
   translationKey?: string
+  cover?: string
 }

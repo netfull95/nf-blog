@@ -1,5 +1,5 @@
 import { allAuthors } from 'contentlayer/generated'
-import { featuredTranslationKeys, series, seriesOf } from '@/data/series'
+import { featuredTranslationKeys, series, seriesCover, seriesOf } from '@/data/series'
 import Hero from '@/components/home/Hero'
 import FeaturedPost from '@/components/home/FeaturedPost'
 import SeriesGrid from '@/components/home/SeriesGrid'
@@ -16,15 +16,19 @@ export default async function Home({ posts }) {
   const author = allAuthors.find((a) => a.slug === 'default')
   const homePosts: HomePost[] = posts
     .filter((p) => !p.draft)
-    .map((p) => ({
-      slug: p.slug,
-      title: p.title,
-      summary: p.summary,
-      date: p.date,
-      minutes: Math.max(1, Math.round(p.readingTime?.minutes ?? 1)),
-      series: seriesOf(p),
-      translationKey: p.translationKey,
-    }))
+    .map((p) => {
+      const key = seriesOf(p)
+      return {
+        slug: p.slug,
+        title: p.title,
+        summary: p.summary,
+        date: p.date,
+        minutes: Math.max(1, Math.round(p.readingTime?.minutes ?? 1)),
+        series: key,
+        translationKey: p.translationKey,
+        cover: p.cover ?? (key ? seriesCover(key) : undefined),
+      }
+    })
 
   const featured = homePosts.find(
     (p) => p.translationKey && featuredTranslationKeys.includes(p.translationKey)

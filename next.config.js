@@ -86,6 +86,10 @@ module.exports = () => {
           protocol: 'https',
           hostname: 'content.pancake.vn',
         },
+        {
+          protocol: 'https',
+          hostname: 'statics.pancake.vn',
+        },
       ],
       unoptimized,
     },

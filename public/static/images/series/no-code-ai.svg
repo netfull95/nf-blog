@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#030712"/><stop offset="1" stop-color="#0b2530"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#f59e0b" stop-opacity="0.3"/><stop offset="1" stop-color="#f59e0b" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <circle cx="860" cy="220" r="200" fill="url(#glow)"/>
+  <path d="M200 170h400a30 30 0 0 1 30 30v110a30 30 0 0 1-30 30H290l-60 50v-50h-30a30 30 0 0 1-30-30V200a30 30 0 0 1 30-30z" fill="#0f2f3a" stroke="#1f4b5a" stroke-width="2"/>
+  <rect x="215" y="215" width="320" height="16" rx="8" fill="#e5e7eb"/>
+  <rect x="215" y="250" width="240" height="16" rx="8" fill="#9ca3af"/>
+  <rect x="215" y="285" width="280" height="16" rx="8" fill="#9ca3af" opacity="0.6"/>
+  <path d="M1000 400H560a30 30 0 0 0-30 30v100a30 30 0 0 0 30 30h340l60 45v-45h40a30 30 0 0 0 30-30V430a30 30 0 0 0-30-30z" fill="#0e7490"/>
+  <rect x="575" y="440" width="330" height="16" rx="8" fill="#ecfeff"/>
+  <rect x="575" y="475" width="250" height="16" rx="8" fill="#a5f3fc"/>
+  <rect x="575" y="510" width="180" height="16" rx="8" fill="#a5f3fc" opacity="0.7"/>
+  <path d="M860 120C870 190 890 210 960 220C890 230 870 250 860 320C850 250 830 230 760 220C830 210 850 190 860 120Z" fill="#f59e0b"/>
+  <path d="M1010 290C1015 320 1025 330 1055 335C1025 340 1015 350 1010 380C1005 350 995 340 965 335C995 330 1005 320 1010 290Z" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="300" cy="490" r="14" fill="#22d3ee"/>
+  <circle cx="350" cy="490" r="14" fill="#22d3ee" opacity="0.7"/>
+  <circle cx="400" cy="490" r="14" fill="#22d3ee" opacity="0.4"/>
+</svg>

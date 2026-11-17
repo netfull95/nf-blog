@@ -73,3 +73,9 @@ export function seriesBySlug(slug: string) {
 export function seriesSlug(key: SeriesKey) {
   return series.find((s) => s.key === key)?.slug
 }
+
+// Illustration in public/static/images/series/<slug>.svg, used as the series card
+// cover and as the thumbnail for posts without their own image.
+export function seriesCover(key: SeriesKey) {
+  return `/static/images/series/${seriesSlug(key)}.svg`
+}
