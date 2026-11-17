@@ -90,7 +90,9 @@
       "errorParseFailed": "Không nhận diện được dạng URL Facebook này.",
       "errorFbBlocked": "Facebook chặn truy cập. Chỉ trả được info từ URL.",
       "errorRateLimited": "Bạn tra cứu quá nhanh. Thử lại sau {seconds}s.",
-      "errorUnknown": "Không lấy được thông tin. Thử lại sau."
+      "errorUnknown": "Không lấy được thông tin. Thử lại sau.",
+      "embedSummary": "Thử ngay: tra page_id từ link fanpage",
+      "embedOpenFull": "Mở công cụ đầy đủ"
     },
     "shopee": {
       "title": "Shopee link cùng nF",
@@ -302,7 +304,13 @@
     "translationLang": "English",
     "inSeries": "Cùng series: {series}",
     "seriesAll": "Xem cả series",
-    "disclaimer": "Đây là blog cá nhân, không phải kênh chính thức của Pancake. Tên menu và tính năng có thể thay đổi theo phiên bản."
+    "disclaimer": "Đây là blog cá nhân, không phải kênh chính thức của Pancake. Tên menu và tính năng có thể thay đổi theo phiên bản.",
+    "updatedOn": "Cập nhật",
+    "copyForAI": "Copy Markdown cho AI",
+    "copiedForAI": "Đã copy",
+    "copyForAIError": "Không copy được, thử lại",
+    "viewMarkdown": "Xem Markdown",
+    "loadComments": "Xem bình luận"
   },
   "Locale": {
     "switchTo": "Chuyển ngôn ngữ",

@@ -90,7 +90,9 @@
       "errorParseFailed": "Could not recognize this Facebook URL pattern.",
       "errorFbBlocked": "Facebook blocked the request. Only URL-derived info is available.",
       "errorRateLimited": "Too many lookups. Please retry in {seconds}s.",
-      "errorUnknown": "Failed to fetch info. Try again later."
+      "errorUnknown": "Failed to fetch info. Try again later.",
+      "embedSummary": "Try it: look up a page_id from a fanpage link",
+      "embedOpenFull": "Open the full tool"
     },
     "shopee": {
       "title": "Shopee link with nF",
@@ -302,7 +304,13 @@
     "translationLang": "Tiếng Việt",
     "inSeries": "More in {series}",
     "seriesAll": "See the whole series",
-    "disclaimer": "This is a personal blog, not an official Pancake channel. Menu names and features may change between versions."
+    "disclaimer": "This is a personal blog, not an official Pancake channel. Menu names and features may change between versions.",
+    "updatedOn": "Updated",
+    "copyForAI": "Copy Markdown for AI",
+    "copiedForAI": "Copied",
+    "copyForAIError": "Couldn't copy, try again",
+    "viewMarkdown": "View Markdown",
+    "loadComments": "Load comments"
   },
   "Locale": {
     "switchTo": "Switch language",

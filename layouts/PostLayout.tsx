@@ -2,12 +2,14 @@ import { ReactNode } from 'react'
 import { CoreContent } from 'pliny/utils/contentlayer'
 import type { Blog, Authors } from 'contentlayer/generated'
 import Comments from '@/components/Comments'
+import CopyForAI from '@/components/CopyForAI'
 import Link from '@/components/Link'
 import PageTitle from '@/components/PageTitle'
 import SectionContainer from '@/components/SectionContainer'
 import Image from '@/components/Image'
 import Tag from '@/components/Tag'
 import siteMetadata from '@/data/siteMetadata'
+import { commentsEnabled } from '@/lib/comments'
 import ScrollTopAndComment from '@/components/ScrollTopAndComment'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { dateLocale } from '@/lib/dateLocale'
@@ -16,6 +18,12 @@ import { pancakeSeries } from '@/data/series'
 import type { PostSeries, PostTranslation } from './postExtras'
 
 const editUrl = (path) => `${siteMetadata.siteRepo}/blob/main/data/${path}`
+
+const lastmodTemplate: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}
 
 const postDateTemplate: Intl.DateTimeFormatOptions = {
   weekday: 'long',
@@ -43,7 +51,7 @@ export default async function PostLayout({
   series,
   children,
 }: LayoutProps) {
-  const { filePath, path, slug, date, title, tags, readingTime } = content
+  const { filePath, path, slug, date, lastmod, title, tags, readingTime } = content
   const toc = (content.toc ?? []) as TocItem[]
   const minutes = Math.max(1, Math.round(readingTime?.minutes ?? 1))
   const th = await getTranslations('Home')
@@ -65,6 +73,17 @@ export default async function PostLayout({
                     <time dateTime={date}>
                       {new Date(date).toLocaleDateString(locale, postDateTemplate)}
                     </time>
+                    {lastmod && lastmod !== date && (
+                      <>
+                        <span aria-hidden="true">{` · `}</span>
+                        <span>
+                          {t('updatedOn')}{' '}
+                          <time dateTime={lastmod}>
+                            {new Date(lastmod).toLocaleDateString(locale, lastmodTemplate)}
+                          </time>
+                        </span>
+                      </>
+                    )}
                     <span aria-hidden="true">{` · `}</span>
                     <span>{t('minutesRead', { minutes })}</span>
                   </dd>
@@ -72,6 +91,9 @@ export default async function PostLayout({
               </dl>
               <div>
                 <PageTitle>{title}</PageTitle>
+              </div>
+              <div className="pt-3">
+                <CopyForAI slug={slug} />
               </div>
               {translation && (
                 <p className="pt-3 text-sm">
@@ -171,7 +193,7 @@ export default async function PostLayout({
               <div className="pt-6 pb-6 text-sm text-gray-700 dark:text-gray-300">
                 <Link href={editUrl(filePath)}>{t('viewOnGithub')}</Link>
               </div>
-              {siteMetadata.comments && (
+              {commentsEnabled && (
                 <div
                   className="pt-6 pb-6 text-center text-gray-700 dark:text-gray-300"
                   id="comment"

@@ -5,6 +5,7 @@ import Image from './Image'
 import CustomLink from './Link'
 import TableWrapper from './TableWrapper'
 import CodeBlock from './CodeBlock'
+import FBInfoEmbed from './FBInfoEmbed'
 import Link from 'next/link'
 
 export const components: MDXComponents = {
@@ -21,4 +22,5 @@ export const components: MDXComponents = {
   pre: CodeBlock,
   table: TableWrapper,
   BlogNewsletterForm,
+  FBInfoEmbed,
 }

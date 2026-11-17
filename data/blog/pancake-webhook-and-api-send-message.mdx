@@ -147,10 +147,12 @@ When a new message arrives, Pancake POSTs a JSON payload to your webhook URL. Ex
 
 Key fields to note:
 
-- **`page_id`**: ID of the Facebook Page / channel receiving the message — needed when calling the reply API. If you need to look up a `page_id` from a Facebook page link, try the [FB Info Lookup tool](/tools/fb-info).
+- **`page_id`**: ID of the Facebook Page / channel receiving the message — needed when calling the reply API. If you need to look up a `page_id` from a Facebook page link, try the [FB Info Lookup tool](/en/tools/fb-info).
 - **`conversation_id`**: Conversation ID — to send the reply to the correct conversation
 - **`message.text`**: The customer's message — the main payload you'll process
 - **`customer`**: Customer info — name, ID, platform ID
+
+<FBInfoEmbed />
 
 ---
 
@@ -413,8 +415,8 @@ Note: path is `/api/public_api/v1/`, NOT `/api/v1/`. Query param is `page_access
 ## Related posts & tools
 
 - 📖 [Introducing Pancake — An All-in-One Multichannel Sales Platform](/en/blog/introducing-pancake) — overview before integrating
-- 🔧 [FB Info Lookup tool](/tools/fb-info) — quickly extract `page_id` and public metadata from a Facebook page/profile link
-- 🛒 [Shopee Affiliate Link tool](/tools/shopee-shortlink) — generate Shopee affiliate links for e-commerce integrations
+- 🔧 [FB Info Lookup tool](/en/tools/fb-info) — quickly extract `page_id` and public metadata from a Facebook page/profile link
+- 🛒 [Shopee Affiliate Link tool](/en/tools/shopee-shortlink) — generate Shopee affiliate links for e-commerce integrations
 
 ---
 
