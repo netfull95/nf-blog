@@ -67,7 +67,7 @@ export default async function SeriesPage({
   return (
     <div className="divide-y divide-gray-200 dark:divide-gray-700">
       <header className="space-y-3 pt-6 pb-8">
-        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl dark:text-gray-100">
+        <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl dark:text-gray-100">
           {t(`series.${def.key}.title`)}
         </h1>
         <p className="text-lg text-gray-600 dark:text-gray-300">

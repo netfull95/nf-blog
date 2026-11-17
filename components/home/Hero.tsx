@@ -11,7 +11,7 @@ export default async function Hero({ avatar }: { avatar?: string }) {
         <p className="text-primary-600 dark:text-primary-400 text-sm font-semibold tracking-wide uppercase">
           {t('eyebrow')}
         </p>
-        <h1 className="text-4xl leading-tight font-extrabold tracking-tight text-gray-900 sm:text-5xl dark:text-gray-100">
+        <h1 className="text-4xl leading-tight font-bold tracking-tight text-gray-900 sm:text-5xl dark:text-gray-100">
           {t('greeting')}
         </h1>
         <p className="text-lg leading-8 text-gray-600 dark:text-gray-300">{t('intro')}</p>
