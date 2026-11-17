@@ -50,8 +50,15 @@ const copy = {
     technical: [
       ['Ngôn ngữ và code', ['JavaScript', 'Elixir']],
       ['Web và cộng tác', ['HTML', 'CSS', 'Git']],
-      ['Giao tiếp giữa hệ thống', ['REST API', 'Webhooks', 'Sockets', 'WSS']],
+      ['Cơ sở dữ liệu và mô hình dữ liệu', ['SQL', 'PostgreSQL', 'Database Design', 'Data Modeling']],
+      ['Messaging và cache', ['RabbitMQ', 'Redis']],
+      ['Tìm kiếm', ['Elasticsearch']],
+      ['Giao tiếp giữa hệ thống', ['REST APIs', 'Webhooks', 'WebSockets (WS/WSS)']],
+      ['AI và giao thức tích hợp', ['AI', 'MCP (Model Context Protocol)']],
     ],
+    educationTitle: 'Học vấn',
+    educationInstitution: 'Trường Đại học Công nghệ Giao thông vận tải',
+    educationDetails: 'Khoa Công nghệ thông tin · Chuyên ngành Hệ thống thông tin · Đã tốt nghiệp',
     gratitudeTitle: 'Lời cảm ơn',
     gratitude:
       'Mình biết ơn Công ty TNHH Pancake Việt Nam đã trao cho mình cơ hội phát triển bản thân và thử sức qua nhiều phần việc, dự án. Mình cũng trân trọng những đồng nghiệp nhiệt huyết, giàu kinh nghiệm và có chuyên môn cao. Được làm việc cùng mọi người giúp mình học hỏi, trưởng thành và tích lũy những kinh nghiệm đang có hôm nay.',
@@ -107,8 +114,15 @@ const copy = {
     technical: [
       ['Languages and coding', ['JavaScript', 'Elixir']],
       ['Web and collaboration', ['HTML', 'CSS', 'Git']],
-      ['System communication', ['REST APIs', 'Webhooks', 'Sockets', 'WSS']],
+      ['Databases and data modeling', ['SQL', 'PostgreSQL', 'Database Design', 'Data Modeling']],
+      ['Messaging and caching', ['RabbitMQ', 'Redis']],
+      ['Search', ['Elasticsearch']],
+      ['System communication', ['REST APIs', 'Webhooks', 'WebSockets (WS/WSS)']],
+      ['AI and integration protocols', ['AI', 'MCP (Model Context Protocol)']],
     ],
+    educationTitle: 'Education',
+    educationInstitution: 'University of Transport Technology',
+    educationDetails: 'Faculty of Information Technology · Major in Information Systems · Graduated',
     gratitudeTitle: 'With gratitude',
     gratitude:
       'I am grateful to Pancake Viet Nam Company Limited for giving me opportunities to grow and take on a wide range of work and projects. I am equally thankful for my colleagues: a passionate team with deep experience and strong professional skills. Working with them has helped me learn, grow, and build the experience I have today.',
@@ -196,6 +210,18 @@ export default function AboutResume({ locale }: { locale: 'vi' | 'en' }) {
               </ul>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="education-title">
+        <h2 id="education-title" className="mb-6 text-2xl font-bold text-gray-900 dark:text-gray-100">
+          {t.educationTitle}
+        </h2>
+        <div className="rounded-2xl border border-gray-200 p-5 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {t.educationInstitution}
+          </h3>
+          <p className="mt-2 leading-7 text-gray-600 dark:text-gray-300">{t.educationDetails}</p>
         </div>
       </section>
     </div>
