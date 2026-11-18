@@ -43,6 +43,7 @@ export const series: SeriesDefinition[] = [
       'botcake-auto-reply-after-hours',
       'pancake-email-smtp-imap-setup',
       'zalo-personal-cleanup',
+      'meta-conversation-routing',
     ],
   },
   {

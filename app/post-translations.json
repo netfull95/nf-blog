@@ -8,6 +8,10 @@
       "en": "botcake-ai-auto-reply-after-hours",
       "vi": "botcake-tu-dong-tra-loi-ngoai-gio"
     },
+    "meta-conversation-routing": {
+      "vi": "dinh-tuyen-hoi-thoai-meta-pancake-botcake",
+      "en": "meta-conversation-routing-pancake-botcake"
+    },
     "pancake-page-customers": {
       "vi": "dong-bo-khach-hang-pancake-api-page-customers",
       "en": "pancake-page-customers-api-sync-to-crm"
@@ -72,6 +76,7 @@
     "3-ways-to-extract-pancake-data-into-your-crm": "pancake-extraction-options",
     "botcake-ai-auto-reply-after-hours": "botcake-auto-reply-after-hours",
     "botcake-tu-dong-tra-loi-ngoai-gio": "botcake-auto-reply-after-hours",
+    "dinh-tuyen-hoi-thoai-meta-pancake-botcake": "meta-conversation-routing",
     "dong-bo-khach-hang-pancake-api-page-customers": "pancake-page-customers",
     "get-pancake-conversations-list-api": "pancake-list-conversations",
     "gioi-thieu-pancake-crm-api": "intro-pancake-crm",
@@ -79,6 +84,7 @@
     "introducing-pancake-crm-api": "intro-pancake-crm",
     "introducing-pancake": "intro-pancake",
     "lay-danh-sach-hoi-thoai-pancake-api": "pancake-list-conversations",
+    "meta-conversation-routing-pancake-botcake": "meta-conversation-routing",
     "pancake-api-mcp-cai-dat-su-dung-claude-cursor": "pancake-api-mcp-guide",
     "pancake-api-mcp-install-guide-claude-cursor": "pancake-api-mcp-guide",
     "pancake-connect-email-smtp-imap": "pancake-email-smtp-imap-setup",

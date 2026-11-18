@@ -1,0 +1,234 @@
+---
+title: "Bot không trả lời khi dùng cùng lúc Pancake và Botcake? Hiểu định tuyến hội thoại Meta trong 5 phút"
+date: "2026-11-18"
+lastmod: "2026-11-18"
+language: "vi"
+translationKey: "meta-conversation-routing"
+summary: "Từ khoá không chạy, bấm Menu chính không ra luồng, gửi tin trên Pancake báo lỗi #10 — phần lớn đều do định tuyến hội thoại của Meta. Bài này giải thích bằng ngôn ngữ dễ hiểu vì sao mỗi hội thoại chỉ có một app nắm quyền, cấu hình chuẩn khi page dùng cả Pancake và Botcake, các lỗi #10 / #100 / #2022, những triệu chứng trông giống nhưng không phải do định tuyến, và checklist thông tin cần gửi support."
+tags: ["Botcake", "Pancake", "Facebook Messenger", "CSKH", "Tích hợp"]
+---
+
+> **TL;DR:** Trên Messenger, **mỗi hội thoại tại một thời điểm chỉ do một app nắm quyền** — Pancake hoặc Botcake. App không nắm quyền thì không gửi được tin (lỗi `#10`) và không nhận được dữ liệu khi khách bấm nút. Cấu hình chuẩn khi page dùng cả hai: **Ứng dụng định tuyến mặc định = Pancake**, **Định tuyến xã hội = Botcake**, và bật **Kiểm soát cuộc trò chuyện** (thread control) để tránh gián đoạn. Hội thoại đang bị app khác giữ quyền phải **chờ tối đa 24 giờ tính từ lúc app đó giành quyền** — hãy test bằng hội thoại mới.
+
+---
+
+## Ba triệu chứng hay gặp
+
+Mỗi tuần, support Pancake và Botcake nhận khá nhiều câu hỏi dạng này:
+
+> *"Bật từ khoá rồi mà Bot không trả lời."*
+>
+> *"Xuất bản Menu chính bị lỗi #100. Đổi app xong thì xuất bản được, nhưng khách bấm menu lại không chạy luồng."*
+>
+> *"Gửi tin trên Pancake báo: Another app is controlling this thread."*
+
+Ba triệu chứng khác nhau nhưng chung một gốc: **định tuyến hội thoại (Conversation Routing)** — cơ chế Meta dùng để quyết định app nào được xử lý tin nhắn của page. Hiểu cơ chế này thì chủ shop tự sửa được phần lớn trường hợp, còn support sẽ biết cần hỏi khách thông tin gì ngay từ đầu.
+
+---
+
+## Hiểu đúng: một hội thoại, một app nắm quyền
+
+Một page có thể kết nối nhiều app cùng lúc (Pancake, Botcake, app của bên thứ ba…). Để tránh khách bị nhiều app nhắn chồng lên nhau, Meta quy định: **tại một thời điểm, mỗi hội thoại chỉ có một app nắm quyền**.
+
+| | App đang nắm quyền | App không nắm quyền |
+|---|---|---|
+| Gửi tin cho khách | Được | Bị chặn — lỗi `#10` |
+| Nhận tin khách nhắn | Nhận đầy đủ | Chỉ "xem ké" qua kênh dự phòng (nếu được cấp quyền) |
+| Nhận dữ liệu khi khách bấm nút (Menu chính, nút trong tin) | Nhận | **Không nhận** → luồng không chạy |
+
+Hai hệ quả quan trọng:
+
+1. **Bấm Menu chính không chạy luồng** — nếu lúc khách bấm, Pancake đang nắm quyền hội thoại, Messenger chỉ gửi dữ liệu nút cho Pancake. Botcake không biết khách đã bấm nút nào nên không chạy được luồng tương ứng. Khi Botcake đã gửi tin và nắm quyền, các lần bấm sau mới chạy.
+2. **Đổi cấu hình không áp dụng ngay cho hội thoại cũ** — hội thoại đang bị app trước giữ quyền vẫn giữ nguyên cho đến khi quyền được nhả, **tối đa 24 giờ tính từ thời điểm app đó giành quyền**. Đây là lý do rất nhiều lần "đã sửa đúng mà test vẫn lỗi": người test nhắn tiếp vào hội thoại cũ.
+
+> [!NOTE]
+> Định tuyến cuộc trò chuyện (Conversation Routing) là tính năng Meta ra mắt từ 2023, thay cho cách cài cũ. Trong bài này, "định tuyến" chỉ mục **Định tuyến cuộc trò chuyện trên Messenger** trong cài đặt page. Tài liệu: [Pancake — Định tuyến trò chuyện](https://docs.pancake.biz/pancake/st-f8/st-p1/st-s1?lang=vi), [Meta — Conversation Routing](https://www.facebook.com/business/help/321478556915081).
+
+---
+
+## Cấu hình chuẩn khi page dùng cả Pancake và Botcake
+
+Theo [hướng dẫn Định tuyến trò chuyện của Pancake](https://docs.pancake.biz/pancake/st-f8/st-p1/st-s1?lang=vi), làm hai bước trong phần cài đặt page trên Facebook. Pancake làm app mặc định vì app mặc định được ưu tiên nhận và gửi tin, và có thể lấy lại quyền khi app khác đang giữ hội thoại.
+
+### Bước 1 — Định tuyến cuộc trò chuyện
+
+Vào trang Facebook (chuyển sang vai trò Trang) → **Cài đặt**. Hoặc mở thẳng [facebook.com/settings/?tab=msgr_conversation_routing](https://www.facebook.com/settings/?tab=msgr_conversation_routing).
+
+![Trang quản lý page trên Facebook, mục Cài đặt ở menu bên trái được khoanh đỏ](https://statics.pancake.vn/pancake-docs/2026/4/3/40b4c204-ac21-43e1-8fe9-2b1b4c45f718_Screenshot_16.png)
+
+Chọn **Thiết lập Trang** → **Định tuyến cuộc trò chuyện trên Messenger**.
+
+![Cài đặt và quyền riêng tư: Thiết lập Trang ở cột trái, mục Định tuyến cuộc trò chuyện trên Messenger được khoanh đỏ](https://statics.pancake.vn/pancake-docs/2026/4/3/12d17f86-619c-4df0-92b6-7949324b0e2b_Screenshot_17.png)
+
+Đặt như sau:
+
+- **Ứng dụng định tuyến mặc định:** `Pancake v2`
+- **Định tuyến xã hội:** `Trang Facebook` → `Botcake`
+
+![Màn hình định tuyến Messenger: Ứng dụng định tuyến mặc định là Pancake v2, Định tuyến xã hội cho Trang Facebook là Botcake](https://statics.pancake.vn/pancake-docs/2026/4/3/53bf64db-002e-44cc-ac3f-e47d720c20a5_Screenshot_19.png)
+
+> [!NOTE]
+> **Không thấy Pancake hoặc Botcake trong danh sách để chọn?** Đôi khi Meta lỗi hiển thị, thiếu một trong hai app. Khi đó **để trống Ứng dụng định tuyến mặc định** để cả hai app đều nhận được sự kiện. Khi app hiển thị lại, quay về cấu hình chuẩn ở trên.
+
+### Bước 2 — Bật Kiểm soát cuộc trò chuyện (thread control)
+
+Quay lại **Thiết lập Trang** → **Nhắn tin nâng cao**.
+
+![Thiết lập Trang, mục Nhắn tin nâng cao được khoanh đỏ](https://statics.pancake.vn/pancake-docs/2026/4/3/2502e287-c24a-4ebc-9bf3-29dfd96d5ce2_Screenshot_20.png)
+
+Trong danh sách app đã kết nối, bấm **Chỉnh sửa** ở dòng **Pancake v2**, sau đó làm tương tự với **Botcake**.
+
+![Danh sách app trong Nhắn tin nâng cao: Botcake và Pancake v2, mỗi dòng có nút Chỉnh sửa](https://statics.pancake.vn/pancake-docs/2026/4/3/0fe1907e-4846-48c2-83fa-474d0c2d8459_Screenshot_21.png)
+
+Với mỗi app, bật **Kiểm soát cuộc trò chuyện** → **Save**.
+
+![Hộp thoại Botcake Settings: công tắc Kiểm soát cuộc trò chuyện được bật và nút Save được khoanh đỏ](https://statics.pancake.vn/pancake-docs/2026/4/3/f03ff762-cc5a-404a-abf5-b766da289675_Screenshot_22.png)
+
+> [!WARNING]
+> **Sau khi lưu, cấu hình chỉ áp dụng cho hội thoại phát sinh từ thời điểm đó.** Hội thoại đang bị app khác giữ quyền phải chờ **tối đa 24 giờ tính từ lúc app đó giành quyền**. Trong lúc chờ, phản hồi thủ công trên Meta Business Suite.
+>
+> Đây cũng là lý do **nên bật Kiểm soát cuộc trò chuyện ngay từ đầu**: app được cấp quyền này có thể lấy lại quyền hội thoại khi cần, hạn chế các khoảng gián đoạn tới 24 giờ.
+
+> [!TIP]
+> **Cách test đúng:** dùng một tài khoản Facebook **chưa từng nhắn** cho page (hoặc chờ qua ngày), nhắn tin mới. Đừng nhắn tiếp vào hội thoại test cũ — nó có thể vẫn đang bị app trước giữ quyền.
+
+---
+
+## Đã cài đúng mà vẫn lỗi? 4 tình huống thường gặp
+
+### 1. Hội thoại cũ vẫn bị app trước giữ quyền
+
+**Triệu chứng:** hội thoại mới chạy bình thường, riêng một vài hội thoại cũ vẫn không chạy bot hoặc gửi tay báo `#10`.
+
+**Cách xử lý:** chờ quyền tự nhả — **tối đa 24 giờ tính từ lúc app trước giành quyền** hội thoại đó (không phải từ lúc bạn sửa cấu hình). Trong lúc chờ, test bằng tài khoản khác và trả lời hội thoại cũ trên Business Suite. Không cần đổi cấu hình liên tục. Để tránh lặp lại, bật **Kiểm soát cuộc trò chuyện** như Bước 2.
+
+### 2. Xuất bản Menu chính báo lỗi `#100`
+
+**Triệu chứng:** bấm **Xuất bản** Menu chính trong Botcake báo lỗi `#100`.
+
+**Nguyên nhân:** tại thời điểm xuất bản, Botcake cần là app mặc định của page.
+
+**Cách xử lý đã chạy được trong thực tế:** tạm đặt Botcake làm **Ứng dụng định tuyến mặc định** → xuất bản Menu chính → **đặt lại cấu hình chuẩn** (mặc định Pancake, xã hội Botcake). Đừng để Botcake làm mặc định lâu dài nếu nhân viên vẫn trả lời trên Pancake.
+
+### 3. Bấm Menu chính lần đầu không chạy luồng
+
+**Triệu chứng:** khách bấm menu, không có gì xảy ra; bấm lại sau khi bot đã nhắn thì chạy.
+
+**Nguyên nhân:** lần bấm đầu tiên Pancake đang nắm quyền nên dữ liệu nút không về Botcake (xem [phần cơ chế](#hiểu-đúng-một-hội-thoại-một-app-nắm-quyền)). Botcake chỉ "chủ động lấy quyền" được khi có thứ gì đó kích hoạt bot trước.
+
+**Cách giảm thiểu:**
+
+- Hướng dẫn khách **gõ từ khoá** (ví dụ "Đặt hàng", "Tra cứu đơn") để kích hoạt luồng Từ khoá thay vì chỉ dựa vào nút menu.
+- Hoặc dùng nút mở **trang web / form** nếu mục tiêu là thu thập thông tin.
+
+### 4. Danh sách định tuyến thiếu Pancake hoặc Botcake
+
+**Triệu chứng:** vào **Định tuyến cuộc trò chuyện trên Messenger** nhưng không thấy một trong hai app để chọn, dù cả hai đều đã kết nối page.
+
+**Nguyên nhân:** lỗi hiển thị phía Meta.
+
+**Cách xử lý:** **để trống Ứng dụng định tuyến mặc định** để cả Pancake và Botcake đều nhận sự kiện. Kiểm tra lại sau; khi app hiện ra thì đặt về cấu hình chuẩn (mặc định Pancake, xã hội Botcake).
+
+---
+
+## Bảng mã lỗi thường gặp
+
+| Mã lỗi | Ý nghĩa | Cách xử lý |
+|---|---|---|
+| `#10` — *Message failed to send because another app is controlling this thread now* | App đang gửi tin không nắm quyền hội thoại | Kiểm tra định tuyến theo cấu hình chuẩn; với hội thoại cũ, chờ quyền nhả hoặc trả lời trên Business Suite |
+| `#100` (khi xuất bản Menu chính) | Botcake chưa phải app mặc định lúc xuất bản | Tạm đặt Botcake làm mặc định để xuất bản, rồi trả lại cấu hình chuẩn |
+| `#2022` — *The ability to send commerce messages has been temporarily disabled* | Meta **tạm khoá tính năng gửi tin** của page do vi phạm chính sách nhắn tin. **Không phải lỗi định tuyến** | Xem mục [Lỗi #2022](#lỗi-2022-page-bị-meta-tạm-khoá-gửi-tin) bên dưới |
+
+> [!TIP]
+> Xem chi tiết lỗi của từng lần gửi trong Botcake tại **Cấu hình → Hệ thống**. Đây là thông tin support luôn cần — chụp sẵn khi báo lỗi.
+
+### Lỗi #2022: page bị Meta tạm khoá gửi tin
+
+Theo bảng [mã lỗi Messenger Platform](https://developers.facebook.com/documentation/business-messaging/messenger-platform/error-codes) của Meta, `2022` nghĩa là khả năng gửi tin của page đã bị **tạm vô hiệu hoá**, *"là kết quả của giới hạn tính năng được áp sau khi vi phạm chính sách"*. Lỗi này nằm ở phía tài khoản page, nên **đổi định tuyến, đăng xuất / đăng nhập lại hay làm mới quyền trong Botcake hoặc Pancake đều không gỡ được**.
+
+Cách xử lý theo [chính sách Messenger Platform](https://developers.facebook.com/documentation/business-messaging/messenger-platform/policy):
+
+1. **Tìm thông báo vi phạm.** Meta gửi giải thích qua **Hộp thư hỗ trợ của Trang** (Page Support Inbox, ở thanh bên trái phần cài đặt page). Có thể xem thêm các hạn chế tại **Cài đặt → Thiết lập Trang → Trạng thái Trang**.
+2. **Sửa đúng nguyên nhân** trước khi gửi tiếp. Các vi phạm hay gặp:
+   - Gửi tin quảng cáo **ngoài khung 24 giờ** kể từ tin nhắn cuối của khách (với khách nhắn từ quảng cáo click-to-Messenger, khung này có thể kéo dài tới 7 ngày).
+   - Dùng **message tag** sai mục đích, ví dụ gắn tag để gửi khuyến mãi ngoài khung 24 giờ.
+   - Tin nhắn bị khách **báo cáo / chặn nhiều**. [Chính sách nhà phát triển của Meta](https://developers.facebook.com/devpolicy/) ghi rõ trải nghiệm nhắn tin nhận quá nhiều phản hồi tiêu cực có thể bị giới hạn tính năng, tạm dừng hoặc giới hạn tốc độ.
+3. **Phản hồi Meta** ngay trong thông báo ở Hộp thư hỗ trợ của Trang nếu cần giải trình. Theo chính sách, Meta phản hồi trong khoảng **3 ngày làm việc**.
+4. **Tạm dừng broadcast / kịch bản gửi hàng loạt** trong lúc bị giới hạn, vì các lần gửi trong thời gian này đều sẽ lỗi `#2022`.
+5. **Chờ khách nhắn lại.** Theo kinh nghiệm xử lý thực tế, với hội thoại đã báo `#2022`, page chỉ gửi tiếp được **sau khi khách trả lời (reply)**. Không chủ động nhắn lại khách bằng bot hay broadcast; nếu cần liên hệ gấp, dùng kênh khác (gọi điện, Zalo, SMS).
+
+> [!NOTE]
+> Bước 5 là kinh nghiệm từ support, tài liệu của Meta chưa ghi rõ. Meta chỉ nêu đây là giới hạn tạm thời sau vi phạm chính sách và hướng dẫn trao đổi qua Hộp thư hỗ trợ của Trang.
+
+---
+
+## Trông giống lỗi định tuyến, nhưng không phải
+
+Không phải lúc nào "bot không trả lời" cũng do định tuyến. Kiểm tra các điểm này trước khi đổi cấu hình page:
+
+| Triệu chứng | Nguyên nhân thật | Cách xử lý |
+|---|---|---|
+| Đã cài từ khoá cho bài viết cụ thể nhưng bot không trả lời bình luận | Bộ lọc **"Chỉ trả lời bình luận có chứa từ khoá"** ở **Bình luận → Cấu hình chung → Cài đặt khác** áp cho **mọi bài**, kể cả bài cài riêng. Bình luận phải khớp cả từ khoá chung lẫn từ khoá của bài | Thêm từ khoá vào bộ lọc chung đó, hoặc tắt bộ lọc đó. Bật "Ưu tiên trả lời" hay "Chỉ trả lời theo bài viết" **không** bỏ qua được bộ lọc này |
+| Bot chỉ trả lời khi admin test, khách thật nhắn thì không | Page đang để chế độ chỉ trả lời admin | Đổi sang **Bot trả lời cho mọi người** (`Bot replies to everyone`) trong Cấu hình chung |
+| Test từ khoá liên tục, lúc chạy lúc không | Test quá dày | Mỗi lần test cách nhau ít nhất **30 giây**, kể cả khi cấu hình "không giới hạn" |
+| Từ khoá không kích hoạt giữa chừng hội thoại | Khách đang ở bước **Nhập liệu** hoặc trong luồng AI | Kết thúc bước nhập liệu / luồng AI trước, hoặc test bằng hội thoại mới |
+| Tin nhắn có về nhưng bình luận không về Pancake | Bình luận cần **Extension Pancake** để đồng bộ | Cài và bật [Extension Pancake](https://docs.pancake.biz/pancake/st-f1/st-p3?lang=vi), đăng nhập Facebook trên cùng trình duyệt, F5 rồi mở đúng page |
+| Định tuyến đúng nhưng tin về Pancake rất chậm | Webhook từ phía Meta chậm | Xác nhận đúng page (nhiều page tên gần giống nhau rất dễ nhầm), gửi support mốc giờ cụ thể để đối chiếu |
+| Khách không thấy Menu chính | Menu cố định chỉ hiện trên **app Messenger** (bản 106 trở lên, iOS và Android); **không** hiện khi chat qua trình duyệt tích hợp trong app Facebook | Không phải lỗi cấu hình — hướng dẫn khách mở bằng app Messenger, hoặc dùng từ khoá thay cho nút |
+
+Các nguyên nhân khác khiến Botcake ngừng hoạt động (lỡ tắt Botcake, mất quyền trên page, đổi mật khẩu Facebook, page chưa xuất bản…) xem trong docs [Botcake không hoạt động](https://docs.pancake.biz/botcake/st-f6/st-p5/st-s1?lang=vi).
+
+---
+
+## Checklist tự kiểm tra
+
+**Dành cho chủ shop — trước khi nhắn support:**
+
+- [ ] **Định tuyến cuộc trò chuyện trên Messenger:** mặc định là `Pancake v2`, Định tuyến xã hội là `Botcake`
+- [ ] **Nhắn tin nâng cao → Chỉnh sửa** ở cả `Pancake v2` và `Botcake`: đã bật **Kiểm soát cuộc trò chuyện** và bấm **Save**
+- [ ] Chỉ để trống Ứng dụng định tuyến mặc định khi Meta không hiển thị đủ hai app để chọn
+- [ ] Đã test bằng **hội thoại mới** (tài khoản chưa từng nhắn page), không nhắn tiếp hội thoại cũ
+- [ ] Với hội thoại cũ: đã chờ đủ tối đa 24 giờ tính từ lúc app trước giành quyền trước khi kết luận
+- [ ] Bot đang để **Bot trả lời cho mọi người**, không phải chỉ admin
+- [ ] Với bình luận: kiểm tra bộ lọc từ khoá ở **Bình luận → Cấu hình chung → Cài đặt khác**
+- [ ] Đã xem log tại **Cấu hình → Hệ thống** trong Botcake
+
+**Dành cho support — thông tin cần xin khách ngay lần đầu:**
+
+| Thông tin | Vì sao cần |
+|---|---|
+| Ảnh mục **Định tuyến cuộc trò chuyện** và **Nhắn tin nâng cao** của **đúng page** | Trạng thái "đã kết nối / đã kích hoạt" trên Pancake chưa chứng minh Meta đang gửi tin về đúng app |
+| Page ID và tên page | Khách có nhiều page tên gần giống nhau rất hay gửi nhầm ảnh |
+| Thời điểm gửi tin test (ngày, giờ, múi giờ) | Để đối chiếu log |
+| Link hội thoại Pancake có `c_id` | Link phải là hội thoại bị lỗi, không phải link trao đổi với support |
+| Nội dung tin test và tên tài khoản gửi (nếu hội thoại chưa hiện trên Pancake) | Để tìm sự kiện trong log khi chưa có hội thoại |
+| Ảnh/nguyên văn lỗi trong **Cấu hình → Hệ thống** của Botcake | Phân biệt `#10`, `#100`, `#2022` hay lỗi khác |
+
+---
+
+## Câu hỏi thường gặp
+
+**Q: Tại sao không đặt Botcake làm app mặc định luôn cho chắc?**
+A: Vì nhân viên trả lời trên Pancake. Nếu Botcake giữ quyền mặc định, Pancake dễ gặp lỗi `#10` khi gửi tay. Cấu hình chuẩn để Pancake mặc định và cấp cho Botcake quyền kiểm soát cuộc trò chuyện để bot chủ động lấy quyền khi cần.
+
+**Q: Đổi cấu hình rồi bao lâu mới có hiệu lực?**
+A: Hội thoại mới áp dụng gần như ngay. Hội thoại đang bị app khác giữ quyền phải chờ **tối đa 24 giờ tính từ lúc app đó giành quyền** — không phải từ lúc bạn sửa cấu hình. Trong lúc chờ, trả lời các hội thoại cũ trên Meta Business Suite.
+
+**Q: Page đã "kết nối" và "kích hoạt" trên Pancake rồi, sao tin vẫn không về?**
+A: Trạng thái đó chỉ cho biết page đã gắn với Pancake, chưa chứng minh Meta đang gửi tin về Pancake. Kiểm tra định tuyến, test bằng hội thoại mới, và gửi support mốc giờ test cụ thể.
+
+---
+
+## Tổng kết
+
+- Mỗi hội thoại Messenger tại một thời điểm **chỉ có một app nắm quyền** — đó là gốc của lỗi `#10`, Menu chính không chạy và từ khoá "lúc được lúc không".
+- Dùng cả Pancake và Botcake: **mặc định Pancake, xã hội Botcake, bật Kiểm soát cuộc trò chuyện**. Chỉ để trống app mặc định khi Meta lỗi không hiển thị đủ hai app.
+- Đổi cấu hình xong, **test bằng hội thoại mới** và cho hội thoại cũ tối đa 24 giờ tính từ lúc app trước giành quyền.
+- Trước khi sửa định tuyến, loại trừ các nguyên nhân "trông giống": bộ lọc từ khoá chung của Bình luận, chế độ chỉ trả lời admin, Extension cho bình luận, Menu chính không hiện trong app Facebook.
+
+### Tham khảo thêm
+
+- [Docs Pancake — Định tuyến trò chuyện (Conversation routing)](https://docs.pancake.biz/pancake/st-f8/st-p1/st-s1?lang=vi)
+- [Docs Botcake — Botcake không hoạt động](https://docs.pancake.biz/botcake/st-f6/st-p5/st-s1?lang=vi)
+- [AI tự động trả lời ngoài giờ với Botcake — cài đúng để AI không phá hội thoại](/blog/botcake-tu-dong-tra-loi-ngoai-gio)
+- [Hệ sinh thái Pancake — Botcake là sản phẩm nào?](/blog/gioi-thieu-pancake)

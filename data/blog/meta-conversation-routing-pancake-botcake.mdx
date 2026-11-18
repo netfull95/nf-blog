@@ -1,0 +1,236 @@
+---
+title: "Bot not replying when you use Pancake and Botcake together? Meta conversation routing explained in 5 minutes"
+date: "2026-11-18"
+lastmod: "2026-11-18"
+language: "en"
+translationKey: "meta-conversation-routing"
+summary: "Keywords not firing, Main Menu taps doing nothing, Pancake throwing error #10 when you reply — most of it traces back to Meta's conversation routing. This guide explains in plain language why only one app controls a conversation at a time, the recommended setup for pages running both Pancake and Botcake, errors #10 / #100 / #2022, look-alike symptoms that are not routing at all, and the exact information to send support."
+tags: ["Botcake", "Pancake", "Facebook Messenger", "Customer support", "Integration"]
+---
+
+> **TL;DR:** On Messenger, **each conversation is controlled by exactly one app at any moment** — Pancake or Botcake. The app without control can't send (error `#10`) and never receives button taps. Recommended setup for pages using both: **Default routing app = Pancake**, **Social routing = Botcake**, and turn on **conversation control** (thread control) to avoid interruptions. A conversation already held by another app has to wait **up to 24 hours from the moment that app took control** — always test with a brand-new conversation.
+
+---
+
+## Three symptoms that keep coming up
+
+Pancake and Botcake support see questions like these every week:
+
+> *"I turned on keywords but the bot doesn't reply."*
+>
+> *"Publishing the Main Menu fails with error #100. After switching apps it publishes, but tapping the menu doesn't trigger the flow."*
+>
+> *"Replying from Pancake fails with: Another app is controlling this thread."*
+
+Different symptoms, one root cause: **conversation routing** — the mechanism Meta uses to decide which app handles a page's messages. Once you understand it, shop owners can fix most cases themselves, and support knows what to ask for on the first reply.
+
+---
+
+## The core idea: one conversation, one app in control
+
+A page can connect several apps at once (Pancake, Botcake, third-party tools…). To stop customers from being messaged by several apps on top of each other, Meta enforces a rule: **at any moment, each conversation is controlled by exactly one app**.
+
+| | App in control | App not in control |
+|---|---|---|
+| Send messages to the customer | Yes | Blocked — error `#10` |
+| Receive customer messages | Fully | Only "watches" via the standby channel (if granted) |
+| Receive button taps (Main Menu, buttons in messages) | Yes | **No** → the flow never runs |
+
+Two consequences matter most:
+
+1. **Main Menu taps don't trigger a flow** — if Pancake controls the conversation when the customer taps, Messenger sends the button data to Pancake only. Botcake never learns which button was tapped, so it can't run the matching flow. Once Botcake has sent a message and taken control, later taps work.
+2. **Config changes don't apply to existing conversations right away** — a conversation still held by the previous app stays that way until control is released, **up to 24 hours from the moment that app took control**. This is why "I fixed it but my test still fails" is so common: the tester keeps messaging the same old thread.
+
+> [!NOTE]
+> Conversation Routing is a feature Meta launched in 2023, replacing the older setup. In this post, "routing" refers to **Messenger conversation routing** in your Page settings. Docs: [Pancake — Conversation routing](https://docs.pancake.biz/pancake/st-f8/st-p1/st-s1?lang=en), [Meta — Conversation Routing](https://www.facebook.com/business/help/321478556915081).
+
+---
+
+## Recommended setup for pages using both Pancake and Botcake
+
+Following [Pancake's conversation routing guide](https://docs.pancake.biz/pancake/st-f8/st-p1/st-s1?lang=en), there are two steps in your Facebook Page settings. Pancake is the default app because the default app gets priority for sending and receiving messages, and can take a conversation back when another app is holding it.
+
+Screenshots below are from the Vietnamese Facebook UI — Vietnamese labels are shown in brackets, and the English UI wording may differ slightly.
+
+### Step 1 — Messenger conversation routing
+
+Open your Facebook Page (switch to acting as the Page) → **Settings** (*Cài đặt*). Or go straight to [facebook.com/settings/?tab=msgr_conversation_routing](https://www.facebook.com/settings/?tab=msgr_conversation_routing).
+
+![Facebook Page management view with Settings highlighted in the left menu](https://statics.pancake.vn/pancake-docs/2026/4/3/40b4c204-ac21-43e1-8fe9-2b1b4c45f718_Screenshot_16.png)
+
+Go to **Page setup** (*Thiết lập Trang*) → **Messenger conversation routing** (*Định tuyến cuộc trò chuyện trên Messenger*).
+
+![Settings & privacy: Page setup in the left column, Messenger conversation routing highlighted](https://statics.pancake.vn/pancake-docs/2026/4/3/12d17f86-619c-4df0-92b6-7949324b0e2b_Screenshot_17.png)
+
+Set:
+
+- **Default routing app** (*Ứng dụng định tuyến mặc định*): `Pancake v2`
+- **Social routing** (*Định tuyến xã hội*): `Facebook Page` → `Botcake`
+
+![Messenger routing screen: default routing app is Pancake v2, social routing for the Facebook Page is Botcake](https://statics.pancake.vn/pancake-docs/2026/4/3/53bf64db-002e-44cc-ac3f-e47d720c20a5_Screenshot_19.png)
+
+> [!NOTE]
+> **Pancake or Botcake missing from the list?** Meta sometimes fails to display one of the two apps. In that case **leave the Default routing app empty** so both apps receive events. Once the app shows up again, switch back to the recommended setup above.
+
+### Step 2 — Turn on conversation control (thread control)
+
+Back in **Page setup** → **Advanced messaging** (*Nhắn tin nâng cao*).
+
+![Page setup with Advanced messaging highlighted](https://statics.pancake.vn/pancake-docs/2026/4/3/2502e287-c24a-4ebc-9bf3-29dfd96d5ce2_Screenshot_20.png)
+
+In the connected apps list, click **Edit** (*Chỉnh sửa*) on the **Pancake v2** row, then do the same for **Botcake**.
+
+![Connected apps in Advanced messaging: Botcake and Pancake v2, each with an Edit button](https://statics.pancake.vn/pancake-docs/2026/4/3/0fe1907e-4846-48c2-83fa-474d0c2d8459_Screenshot_21.png)
+
+For each app, turn on **Conversation control** (*Kiểm soát cuộc trò chuyện*) → **Save**.
+
+![Botcake Settings dialog with the Conversation control toggle enabled and the Save button highlighted](https://statics.pancake.vn/pancake-docs/2026/4/3/f03ff762-cc5a-404a-abf5-b766da289675_Screenshot_22.png)
+
+> [!WARNING]
+> **Once saved, the setup applies to conversations started from that point on.** A conversation already held by another app has to wait **up to 24 hours from the moment that app took control**. Meanwhile, reply manually in Meta Business Suite.
+>
+> That's also why you should **turn on conversation control from day one**: an app with this permission can take the conversation back when it needs to, avoiding those gaps of up to 24 hours.
+
+> [!TIP]
+> **Test the right way:** use a Facebook account that has **never messaged the page** (or wait a day) and start a fresh conversation. Don't keep messaging an old test thread — it may still be held by the previous app.
+
+---
+
+## Set up correctly but still broken? 4 common situations
+
+### 1. An old conversation is still held by the previous app
+
+**Symptom:** new conversations work, but a few older ones still don't trigger the bot, or manual replies fail with `#10`.
+
+**Fix:** wait for control to be released — **up to 24 hours from the moment the previous app took control** of that conversation (not from when you changed the setup). Meanwhile, test with another account and answer old threads in Business Suite. Don't keep flipping the config. To prevent it happening again, turn on **conversation control** as in Step 2.
+
+### 2. Publishing the Main Menu fails with `#100`
+
+**Symptom:** clicking **Publish** on the Main Menu in Botcake returns error `#100`.
+
+**Cause:** at the moment of publishing, Botcake needs to be the page's default app.
+
+**What worked in a real case:** temporarily set Botcake as the **Default routing app** → publish the Main Menu → **switch back to the recommended setup** (default Pancake, social Botcake). Don't leave Botcake as default long-term if your team replies from Pancake.
+
+### 3. The first Main Menu tap does nothing
+
+**Symptom:** the customer taps the menu and nothing happens; after the bot has sent a message, taps work.
+
+**Cause:** on the first tap Pancake was in control, so the button data never reached Botcake (see [the core idea](#the-core-idea-one-conversation-one-app-in-control)). Botcake can only "take control" when something triggers the bot first.
+
+**Workarounds:**
+
+- Ask customers to **type a keyword** (e.g. "Order", "Track my order") to trigger a Keyword flow instead of relying only on menu buttons.
+- Or use a button that opens a **website / form** if the goal is collecting information.
+
+### 4. Pancake or Botcake is missing from the routing list
+
+**Symptom:** in **Messenger conversation routing**, one of the two apps isn't available to pick, even though both are connected to the page.
+
+**Cause:** a display bug on Meta's side.
+
+**Fix:** **leave the Default routing app empty** so both Pancake and Botcake receive events. Check back later; once the app appears, restore the recommended setup (default Pancake, social Botcake).
+
+---
+
+## Common error codes
+
+| Code | Meaning | Fix |
+|---|---|---|
+| `#10` — *Message failed to send because another app is controlling this thread now* | The sending app doesn't control the conversation | Check routing against the recommended setup; for old threads, wait for control to release or reply in Business Suite |
+| `#100` (when publishing the Main Menu) | Botcake wasn't the default app at publish time | Temporarily set Botcake as default to publish, then restore the recommended setup |
+| `#2022` — *The ability to send commerce messages has been temporarily disabled* | Meta has **temporarily limited the page's messaging** after a messaging policy violation. **Not a routing problem** | See [Error #2022](#error-2022-meta-has-temporarily-limited-the-pages-messaging) below |
+
+> [!TIP]
+> Botcake shows per-message error details under **Settings → System** (*Cấu hình → Hệ thống*). Support always needs this — screenshot it before you report an issue.
+
+### Error #2022: Meta has temporarily limited the page's messaging
+
+According to Meta's [Messenger Platform error codes](https://developers.facebook.com/documentation/business-messaging/messenger-platform/error-codes), `2022` means the page's ability to send messages has been **temporarily disabled**, *"the result of a feature limit placed after a policy violation"*. The limit sits on the page itself, so **changing routing, logging out and back in, or refreshing permissions in Botcake or Pancake won't lift it**.
+
+How to handle it, per the [Messenger Platform policy](https://developers.facebook.com/documentation/business-messaging/messenger-platform/policy):
+
+1. **Find the violation notice.** Meta sends the explanation to the **Page Support Inbox** (in the left sidebar of your Page settings). You can also check restrictions under **Settings → Page setup → Page status**.
+2. **Fix the actual cause** before sending again. Common violations:
+   - Sending promotional messages **outside the 24-hour window** since the customer's last message (for customers who came from a click-to-Messenger ad, the window can last up to 7 days).
+   - Using **message tags** outside their approved use cases, e.g. tagging promotions to send them outside the 24-hour window.
+   - Messages getting **reported / blocked** a lot. [Meta's Developer Policies](https://developers.facebook.com/devpolicy/) state that messaging experiences receiving excessive negative feedback may be feature limited, paused or rate-limited.
+3. **Reply to Meta** directly on the notice in the Page Support Inbox if you need to explain. Per the policy, expect a response within about **3 business days**.
+4. **Pause broadcasts / bulk sequences** while the limit is active — every send during this period will fail with `#2022`.
+5. **Wait for the customer to message you.** In practice, once a conversation returns `#2022`, the page can only send again **after the customer replies**. Don't proactively re-message them with the bot or a broadcast; if it's urgent, use another channel (phone, Zalo, SMS).
+
+> [!NOTE]
+> Step 5 comes from support experience; Meta's documentation doesn't spell it out. Meta only describes this as a temporary limit after a policy violation and points you to the Page Support Inbox.
+
+---
+
+## Looks like routing, but isn't
+
+"The bot doesn't reply" isn't always a routing problem. Rule these out before touching the page config:
+
+| Symptom | Real cause | Fix |
+|---|---|---|
+| Keywords set on a specific post, but the bot ignores comments | The **"Only reply to comments containing keywords"** filter under **Comments → General configuration → Other settings** (*Bình luận → Cấu hình chung → Cài đặt khác*) applies to **every post**, including ones with their own settings. A comment must match both the general keywords and the post's keywords | Add the keyword to that general filter, or turn the filter off. "Reply priority" or "Reply by specific post" does **not** bypass it |
+| The bot replies when an admin tests, but not for real customers | The page is set to reply to admins only | Switch to `Bot replies to everyone` under **Settings → General** |
+| Rapid keyword tests work only sometimes | Testing too fast | Leave at least **30 seconds** between tests, even with "unlimited" configured |
+| Keywords don't fire mid-conversation | The customer is in a **User input** step or inside an AI flow | Finish the input step / AI flow first, or test in a new conversation |
+| Messages arrive but comments don't show in Pancake | Comments need the **Pancake Extension** to sync | Install and enable the [Pancake Extension](https://docs.pancake.biz/pancake/st-f1/st-p3?lang=en), log into Facebook in the same browser, refresh, then open the right page |
+| Routing is correct but messages reach Pancake very slowly | Webhooks from Meta are slow | Confirm it's the right page (similar page names get mixed up easily), and send support exact timestamps to check |
+| Customers can't see the Main Menu | The persistent menu only shows in the **Messenger app** (version 106+, iOS and Android); it does **not** show when chatting inside the Facebook app's built-in browser | Not a config issue — ask customers to open the Messenger app, or use keywords instead of buttons |
+
+For other reasons Botcake stops working (Botcake switched off, lost page role, changed Facebook password, unpublished page…), see the docs: [Botcake is not working](https://docs.pancake.biz/botcake/st-f6/st-p5/st-s1?lang=en).
+
+---
+
+## Self-check checklist
+
+**For shop owners — before contacting support:**
+
+- [ ] **Messenger conversation routing:** default is `Pancake v2`, social routing is `Botcake`
+- [ ] **Advanced messaging → Edit** on both `Pancake v2` and `Botcake`: **Conversation control** is on and **saved**
+- [ ] The Default routing app is only left empty when Meta doesn't display both apps
+- [ ] Tested with a **new conversation** (an account that never messaged the page), not an old thread
+- [ ] For old conversations: waited up to 24 hours from when the previous app took control before concluding
+- [ ] The bot is set to **Bot replies to everyone**, not admins only
+- [ ] For comments: checked the keyword filter under **Comments → General configuration → Other settings**
+- [ ] Checked the log under **Settings → System** in Botcake
+
+**For support — ask for this on the first reply:**
+
+| Information | Why |
+|---|---|
+| Screenshots of **Messenger conversation routing** and **Advanced messaging** for the **right page** | "Connected / activated" in Pancake doesn't prove Meta is delivering messages to the right app |
+| Page ID and page name | Customers with similarly named pages often send screenshots of the wrong one |
+| Time of the test message (date, time, timezone) | To match against logs |
+| Pancake conversation link with `c_id` | It must be the broken conversation, not the support chat |
+| Test message content and sender account name (if the conversation never appeared in Pancake) | To find the event in logs when there's no conversation yet |
+| Screenshot/exact text of the error in Botcake's **Settings → System** | To tell `#10`, `#100`, `#2022` and others apart |
+
+---
+
+## FAQ
+
+**Q: Why not just make Botcake the default app to be safe?**
+A: Because your team replies from Pancake. If Botcake holds the default, Pancake easily hits `#10` on manual replies. The recommended setup keeps Pancake as default and grants Botcake conversation control so the bot can take over when it needs to.
+
+**Q: How long until a routing change takes effect?**
+A: New conversations follow it almost immediately. A conversation held by another app has to wait **up to 24 hours from the moment that app took control** — not from when you changed the setup. Meanwhile, answer old conversations in Meta Business Suite.
+
+**Q: The page shows "connected" and "activated" in Pancake, so why aren't messages arriving?**
+A: That status only means the page is linked to Pancake; it doesn't prove Meta is delivering messages to Pancake. Check routing, test with a new conversation, and send support the exact test time.
+
+---
+
+## Wrap-up
+
+- Each Messenger conversation is **controlled by one app at a time** — the root of error `#10`, dead Main Menu taps and keywords that "sometimes work".
+- Using both Pancake and Botcake: **default Pancake, social Botcake, conversation control on**. Only leave the default app empty when Meta fails to display both apps.
+- After changing the setup, **test with a new conversation** and give old ones up to 24 hours from when the previous app took control.
+- Before touching routing, rule out the look-alikes: the general comment keyword filter, admin-only mode, the Extension for comments, and the Main Menu not showing inside the Facebook app.
+
+### Further reading
+
+- [Pancake docs — Conversation routing](https://docs.pancake.biz/pancake/st-f8/st-p1/st-s1?lang=en)
+- [Botcake docs — Botcake is not working](https://docs.pancake.biz/botcake/st-f6/st-p5/st-s1?lang=en)
+- [After-hours auto-reply with Botcake AI — set it up so the AI doesn't trample your team](/en/blog/botcake-ai-auto-reply-after-hours)
+- [The Pancake ecosystem — where Botcake fits](/en/blog/introducing-pancake)
